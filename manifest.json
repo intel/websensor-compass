@@ -1,0 +1,17 @@
+{
+  "lang": "en",
+  "dir": "ltr",
+  "name": "Marine Compass",
+  "description": "Showcase of Generic Sensor APIs",
+  "short_name": "Compass",
+  "icons": [{
+    "src": "icon144.png",
+    "sizes": "144x144",
+    "type": "image/png"
+  }],
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "aliceblue",
+  "background_color": "red"
+}
