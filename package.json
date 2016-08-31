@@ -1,0 +1,24 @@
+{
+  "name": "websensor-compass",
+  "version": "1.0.0",
+  "description": "W3C Generic Sensor-based Compass",
+  "dependencies": {
+    "@types/web-bluetooth": "0.0.3",
+    "gl-matrix": "^2.4.0",
+    "lit-html": "^0.9.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/intel/websensor-compass.git"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/intel/websensor-compass/issues"
+  },
+  "homepage": "https://github.com/intel/websensor-compass#readme"
+}

@@ -5,6 +5,8 @@
 
 <meta charset="utf-8">
 <meta name="viewport" content="user-scalable=no, initial-scale=1">
+<!-- Origin Trial Token, feature = Generic Sensors, origin = https://sensor-compass.appspot.com, expires = 2017-10-24 -->
+<meta http-equiv="origin-trial" data-feature="Generic Sensors" data-expires="2017-10-24" content="Anr1kKvqldcA1J7cfKIwqZTBVYjbbCt9+Gt9tnnSF3XDZXTg03rrNALIt6yeJRduWgL2SeR89p8a+jN0B0mjKgQAAABheyJvcmlnaW4iOiJodHRwczovL3NlbnNvci1jb21wYXNzLmFwcHNwb3QuY29tOjQ0MyIsImZlYXR1cmUiOiJHZW5lcmljU2Vuc29yIiwiZXhwaXJ5IjoxNTA4ODM0NjE0fQ==">
 
 <style>
   html {
@@ -18,13 +20,8 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background: transparent url(./images/bg.jpg) no-repeat scroll 50%;
-    background-size: 100% 100%;
+    background-color: #3e3e56;
     font-family: Arial, Helvetica, sans-serif;
-  }
-  #glCanvas {
-    position: absolute;
-    top: 0;
   }
   .output_err {
     display: block;
@@ -35,72 +32,91 @@
     margin: 20px 10px;
     padding: 20px;
   }
-  .heading {
-    display: block;
-    text-align: center;
-    padding: 10px 0 0;
-    height: 40px;
-    color: #fff;
-    font-size: 1.8em;
-    font-weight: normal;
-  }
 
+  button {
+    padding: 8px;
+    margin: 6px 8px 6px 8px;
+    font: 500 16px Roboto, sans-serif;
+    color: #3e3e56;
+    background-color: transparent;
+    border: 0;
+    border-radius: 2px;
+    box-shadow: none;
+    cursor: pointer;
+    display: inline-block;
+    height: 36px;
+    min-width: 36px;
+    outline: 0;
+    overflow: hidden;
+    text-align: center;
+    text-decoration: none;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    transition: background-color .2s,box-shadow .2s;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  error-console {
+    position: absolute;
+    z-index: 0;
+  }
 </style>
 
-<!-- COMPASS -->
+<script type="module" src="scripts/error-console.js"></script>
+<script type="module" src="scripts/menu-drawer.js"></script>
+<script type="module" src="scripts/compass.js"></script>
 
-<script type="text/javascript" src="scripts/orientationChange.js"></script>
-
-<script type="text/javascript" src="scripts/gl-matrix.min.js"></script>
-<script type="text/javascript" src="scripts/fulltilt.min.js"></script>
-<script type="text/javascript" src="scripts/compass.js"></script>
-
-<!-- FEATURE DETECTION -->
-
-<link rel="stylesheet" href="featuredetection/styles/panel.css">
-<script src="featuredetection/modernizr.js"></script>
-<script src="featuredetection/panel.js"></script>
-
-<!-- DEVICEORIENTATION EMULATOR DETECTION + BOOTSTRAP -->
-<script src="https://richtr.github.io/doe/doe.js"></script>
+<link rel="manifest" href="/manifest.json">
+<lcink rel="serviceworker" href="/sw.js">
 
 <script>
-
-window.addEventListener('load', function() {
-
-  /* Pretty Print Feature Detection */
-  if(window.FeaturePanel) {
-    new FeaturePanel({
-      title: 'Marine Compass',
-      legend: 'A fully web standards compliant JavaScript 3D Compass application.',
-      link: 'https://github.com/richtr/Marine-Compass',
-      features: [
-        {name: 'deviceorientation', title: 'Device Orientation Events', link: 'http://caniuse.com/#feat=deviceorientation'},
-        {name: 'webgl', title: 'WebGL', link: 'http://caniuse.com/#feat=webgl'}
-      ]
-    });
+  function changeRoute(route) {
+    window.history.replaceState({}, '', `?filter=${route}`);
+    document.querySelector('sensor-compass').onRouteChanged();
+    document.querySelector('menu-drawer').opened = false;
   }
 
-  /* Compass Web App */
-  var canvasElement = document.getElementById('glCanvas');
-  canvasElement.setAttribute('width', window.innerWidth);
-  canvasElement.setAttribute('height', window.innerHeight);
+  function daydream() {
+    document.querySelector('sensor-compass').requestBTController("daydream");
+    document.querySelector('menu-drawer').opened = false;
+  }
 
-  var headingElement = document.getElementById('headingReading');
+  function zephyr() {
+    document.querySelector('sensor-compass').requestBTController("zephyr");
+    document.querySelector('menu-drawer').opened = false;
+  }
 
-  new Compass( canvasElement, headingElement );
+  function thingy52() {
+    document.querySelector('sensor-compass').requestBTController("thingy52");
+    document.querySelector('menu-drawer').opened = false;
+  }
 
-}, true);
-
+  function browser() {
+    document.querySelector('sensor-compass').requestBTController(null);
+    document.querySelector('menu-drawer').opened = false;
+  }
 </script>
 </head>
 
 <body>
-  <div class="heading">Heading: <span id="headingReading">-</span>&deg;</div>
-  <canvas id="glCanvas" width="320" height="240"></canvas>
-
-  <!-- Github Ribbon -->
-  <a href="https://github.com/richtr/Marine-Compass"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/e7bbb0521b397edbd5fe43e7f760759336b5e05f/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f677265656e5f3030373230302e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_green_007200.png"></a>
+  <menu-drawer style="z-index: 1; visibility: hidden;">
+    <div style="display: flex; flex-direction: column">
+      <button onclick="changeRoute('l')">Ambient Light</button>
+      <button onclick="changeRoute('a')">Accelerometer</button>
+      <button onclick="changeRoute('g')">Gyroscope</button>
+      <button onclick="changeRoute('m')">Magnetometer (magnet + accel)</button>
+      <button onclick="changeRoute('c')">Complementary filter (accel + gyro)</button>
+      <button onclick="changeRoute('k')">Kalman filter (accel + gyro)</button>
+      <button onclick="changeRoute('o')">Absolute Orientation (accel + gyro + mag)</button>
+      <br><br>
+      <button onclick="daydream()">Daydream Controller</button>
+      <button onclick="zephyr()">Zephyr Device</button>
+      <button onclick="thingy52()">Thingy:52 Device</button>
+      <button onclick="browser()">Device itself</button>
+    </div>
+  </menu-drawer>
+  <error-console style="z-index: 1"></error-console>
+  <sensor-compass></sensor-compass>
 </body>
 
 </html>
