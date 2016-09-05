@@ -708,11 +708,14 @@ class Euler{
     }
 
     calculateRotationMatrix() {
-      let euler = new Euler();
-      euler.set(this.alpha, this.beta, this.gamma);
+      var euler = new Euler();
+      var orientationMatrix = new RotationMatrix();
 
-      let orientationMatrix = new RotationMatrix();
+      euler.set(this.alpha, this.beta, this.gamma);
       orientationMatrix.setFromEuler(euler);
+
+      let screenOrientationAngle = (window.screen.orientation.angle || 0) * degToRad;
+      orientationMatrix.rotateZ(-screenOrientationAngle);
 
       // Copy 3x3 RotationMatrix values to 4x4 gl-matrix mat4
       this.rotationMatrix[0] = orientationMatrix.elements[0];

@@ -48,9 +48,6 @@
 </style>
 
 <!-- COMPASS -->
-
-<script type="text/javascript" src="scripts/orientationChange.js"></script>
-
 <script type="text/javascript" src="scripts/gl-matrix.min.js"></script>
 <script type="text/javascript" src="scripts/fulltilt.min.js"></script>
 <script type="text/javascript" src="scripts/compass.js"></script>
@@ -61,16 +58,12 @@
 <script src="featuredetection/modernizr.js"></script>
 <script src="featuredetection/panel.js"></script>
 
-<!-- DEVICEORIENTATION EMULATOR DETECTION + BOOTSTRAP -->
-<script src="https://richtr.github.io/doe/doe.js"></script>
-
 <link rel="manifest" href="/manifest.json">
 <link rel="serviceworker" href="/sw.js">
 
 <script>
 
 window.addEventListener('load', function() {
-
   /* Pretty Print Feature Detection */
   /* if(window.FeaturePanel) {
     new FeaturePanel({
@@ -93,7 +86,6 @@ window.addEventListener('load', function() {
   var titleElement = document.getElementById('title');
 
   new Compass(canvasElement, headingElement, titleElement);
-
 }, true);
 
 </script>
