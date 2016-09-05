@@ -32,6 +32,48 @@ var M_2_PI = 2 * M_PI;
 var degToRad = M_PI / 180;
 var radToDeg = 180 / M_PI;
 
+
+var Q_angle  =  0.01;
+var Q_gyro   =  0.0003;
+var R_angle  =  0.01;
+
+class KalmanFilter {
+  constructor() {
+    this.angle = 0.0;
+    this.bias = 0;
+
+    this.P00 = 0;
+    this.P01 = 0;
+    this.P10 = 0;
+    this.P11 = 0;
+  }
+
+  filter(accAngle, gyroRate, dt) {
+    this.angle += dt * (gyroRate - this.bias);
+
+    this.P00 +=  -dt * (this.P10 + this.P01) + Q_angle * dt;
+    this.P01 +=  -dt * this.P11;
+    this.P10 +=  -dt * this.P11;
+    this.P11 +=  + Q_gyro * dt;
+
+    let axis = accAngle - this.angle;
+    let S = this.P00 + R_angle;
+    let K0 = this.P00 / S;
+    let K1 = this.P10 / S;
+
+    this.angle +=  K0 * axis;
+    this.bias  +=  K1 * axis;
+
+    this.P00 -= K0 * this.P00;
+    this.P01 -= K0 * this.P01;
+    this.P10 -= K1 * this.P00;
+    this.P11 -= K1 * this.P01;
+
+    return this.angle;
+  }
+};
+
+
 class RotationMatrix {
   constructor(m11, m12, m13, m21, m22, m23, m31, m32, m33) {
 	var outMatrix;
@@ -485,7 +527,7 @@ class Euler{
     };
 
     // +++ COMPASS +++
-    window.Compass = function(canvasElement, headingElement) {
+    window.Compass = function(canvasElement, headingElement, titleElement) {
 
         if (!canvasElement) {
             canvasElement = document.createElement('canvas');
@@ -496,6 +538,7 @@ class Euler{
 
         this.canvasElement = canvasElement;
         this.headingElement = headingElement || document.createElement('div');
+        this.titleElement = titleElement;
 
         try {
             this.gl = create3DContext(canvasElement);
@@ -518,42 +561,63 @@ class Euler{
     };
 
     window.Compass.prototype = {
-
         constructor: window.Compass,
 
         init: function() {
-
             var self = this;
+            if (window.location.href.includes("filter=k")) {
+              this.filter = "Kalmar";
+            } else {
+              this.filter = "Complementary";
+            }
 
-            self.accel = new AccelerometerSensor({ frequency: 60, includesGravity: true });
+            self.accel = new AccelerometerSensor({ frequency: 60, includesGravity: false });
             self.gyros = new GyroscopeSensor({ frequency: 60 });
             self.accel.start();
             self.gyros.start();
 
-            let xGyro = this.gyros.reading.rotationRateX;      
-            let yGyro = this.gyros.reading.rotationRateY;
-            let zGyro = this.gyros.reading.rotationRateZ;
-
             let timestamp = this.gyros.reading.timeStamp;
 
+            let kalmanY = new KalmanFilter();
+            let kalmanX = new KalmanFilter();
+            let kalmanZ = new KalmanFilter();
+
+            self.alpha = 0.0;
+            self.beta = 0.0;
+            self.gamma = 0.0;
+
             self.gyros.onchange = event => {
-              // http://www.instructables.com/id/Accelerometer-Gyro-Tutorial/step3/Combining-the-Accelerometer-and-Gyro/
-              let gyroTrust = 0.98;
+              let xAccel = this.accel.reading.accelerationY / 9.81;
+              let yAccel = this.accel.reading.accelerationX / 9.81;
+              let zAccel = this.accel.reading.accelerationZ / 9.81;
 
-              let xAccel = this.accel.reading.accelerationX;
-              let yAccel = this.accel.reading.accelerationY;
-              let zAccel = this.accel.reading.accelerationZ;
+              self.norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
+              xAccel = (xAccel / self.norm) * 180 / 2;
+              yAccel = (yAccel / self.norm) * -180 / 2;
+              zAccel = (zAccel / self.norm);
 
-              let dt = (this.gyros.reading.timeStamp - timestamp) / 10000;
+              let xGyro = this.gyros.reading.rotationRateX * 180 / Math.PI;
+              let yGyro = this.gyros.reading.rotationRateY * 180 / Math.PI;
+              let zGyro = this.gyros.reading.rotationRateZ * 180 / Math.PI;
+
+              let dt = (this.gyros.reading.timeStamp - timestamp) / (1000 * 1000);
               timestamp = this.gyros.reading.timeStamp;
 
-              xGyro = xGyro + this.gyros.reading.rotationRateX * dt;
-              yGyro = yGyro + this.gyros.reading.rotationRateY * dt;
-              zGyro = zGyro + this.gyros.reading.rotationRateZ * dt;
+              // Kalmar filter
+              if (this.filter === "Kalmar") {
+                self.alpha = kalmanZ.filter(zAccel, zGyro, dt);
+                self.beta = kalmanX.filter(xAccel, xGyro, dt);
+                self.gamma = kalmanY.filter(yAccel, yGyro, dt);
+              }
 
-              self.alpha = zGyro * gyroTrust + zAccel * (1 - gyroTrust);
-              self.beta = xGyro * gyroTrust + xAccel * (1 - gyroTrust);
-              self.gamma = yGyro * gyroTrust + yAccel * (1 - gyroTrust);
+              // Complementary filter
+              else {
+                // Current angle = 98% * (current angle + gyro rotation rate) + (2% * Accelerometer angle)
+                let wGyro = 0.98;
+                self.alpha = wGyro * (self.alpha + zGyro * dt) + (1.0 - wGyro) * zAccel;
+                self.beta = wGyro * (self.beta + xGyro * dt) + (1.0 - wGyro) * xAccel;
+                self.gamma = wGyro * (self.gamma + yGyro * dt) + (1.0 - wGyro) * yAccel;
+              }
             }
 
             // Create rotation matrix object (calculated per canvas draw)
@@ -566,10 +630,10 @@ class Euler{
 
             var inv = toRad(180);
 
-            this.screenMatrix[0] =   Math.cos( inv );
-            this.screenMatrix[1] =   Math.sin( inv );
-            this.screenMatrix[4] = - Math.sin( inv );
-            this.screenMatrix[5] =   Math.cos( inv );
+            this.screenMatrix[0] =   Math.cos(inv);
+            this.screenMatrix[1] =   Math.sin(inv);
+            this.screenMatrix[4] = - Math.sin(inv);
+            this.screenMatrix[5] =   Math.cos(inv);
 
             // Create world transformation matrix (calculated once)
             this.worldMatrix = mat4.create();
@@ -584,6 +648,7 @@ class Euler{
 
             // CompassRenderer manages 3D objects and gl surface life cycle
             this.mCompassRenderer = new CompassRenderer(this);
+            this.mCompassRenderer.setCompassFilter(this.filter);
 
             // Catch window resize event
             window.addEventListener('orientationchange', function() {
@@ -675,8 +740,7 @@ class Euler{
 
             euler.setFromRotationMatrix(orientationMatrix);
             this.mCompassRenderer.setCompassHeading(360 - euler.alpha);
-
-    	},
+        },
 
         render: function() {
             // Update orientation buffer
@@ -783,6 +847,10 @@ class Euler{
             this.heading = heading < 360 ? heading : heading % 360;
         },
 
+        setCompassFilter: function(filter) {
+            this.filter = filter;
+        },
+
         lastCompassHeading: 0,
 
         draw: function() {
@@ -800,10 +868,11 @@ class Euler{
 
             // Display compass heading
             var thisCompassHeading = Math.floor(this.heading);
-            if(this.lastCompassHeading !== thisCompassHeading) {
-              this.compass.headingElement.textContent = thisCompassHeading;
+            if (this.lastCompassHeading !== thisCompassHeading) {
               this.lastCompassHeading = thisCompassHeading;
+              this.compass.headingElement.textContent = this.lastCompassHeading;
             }
+            this.compass.titleElement.textContent = this.filter;
 
             // ***
             this.mTurntable.draw();

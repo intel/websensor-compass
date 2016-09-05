@@ -90,8 +90,9 @@ window.addEventListener('load', function() {
   canvasElement.setAttribute('height', window.innerHeight);
 
   var headingElement = document.getElementById('headingReading');
+  var titleElement = document.getElementById('title');
 
-  new Compass( canvasElement, headingElement );
+  new Compass(canvasElement, headingElement, titleElement);
 
 }, true);
 
@@ -99,7 +100,8 @@ window.addEventListener('load', function() {
 </head>
 
 <body>
-  <div class="heading">Heading: <span id="headingReading">-</span>&deg;</div>
+  <div class="heading"><span id="headingReading">-</span>&deg;</div>
+  <div class="heading" id="title"></div>
   <canvas id="glCanvas" width="320" height="240"></canvas>
 </body>
 
