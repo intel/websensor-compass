@@ -73,6 +73,7 @@ class KalmanFilter {
   }
 };
 
+
 class RotationMatrix {
   constructor(m11, m12, m13, m21, m22, m23, m31, m32, m33) {
     var outMatrix;
@@ -91,6 +92,40 @@ class RotationMatrix {
     this.elements[ 6 ] = m31 || 0;
     this.elements[ 7 ] = m32 || 0;
     this.elements[ 8 ] = m33 || 1;
+  }
+
+  setFromSensorData(gravity, geomagnetic) {
+    let Ax = gravity.accelerationX;
+    let Ay = gravity.accelerationY;
+    let Az = gravity.accelerationZ;
+
+    let Ex = geomagnetic.magneticFieldX;
+    let Ey = geomagnetic.magneticFieldY;
+    let Ez = geomagnetic.magneticFieldZ;
+
+    let Hx = Ey*Az - Ez*Ay;
+    let Hy = Ez*Ax - Ex*Az;
+    let Hz = Ex*Ay - Ey*Ax;
+
+    let normH = Math.sqrt(Hx*Hx + Hy*Hy + Hz*Hz);
+
+    let invH = 1.0 / normH;
+    Hx *= invH;
+    Hy *= invH;
+    Hz *= invH;
+
+    let invA = 1.0 / Math.sqrt(Ax*Ax + Ay*Ay + Az*Az);
+    Ax *= invA;
+    Ay *= invA;
+    Az *= invA;
+
+    let Mx = Ay*Hz - Az*Hy;
+    let My = Az*Hx - Ax*Hz;
+    let Mz = Ax*Hy - Ay*Hx;
+
+    this.set(Hx, Hy, Hz,
+             Mx, My, Mz,
+             Ax, Ay, Az);
   }
 
   copy(matrix) {
@@ -534,7 +569,7 @@ class Euler{
         }
       }
       catch(e) {
-        this.output('Unable to initialize WebGL. Your browser may not support it', 'http://get.webgl.org');
+        this.output(e);
       }
     }
 
@@ -542,20 +577,42 @@ class Euler{
       let params = new URLSearchParams(new URL(window.location.href).search.slice(1));
       let filter = params.get("filter");
 
+      try {
+        this.accel = new AccelerometerSensor({ frequency: 50, includesGravity: true });
+        this.gyros = new GyroscopeSensor({ frequency: 50 });
+        this.magnet = new MagnetometerSensor({ frequency: 50 });
+      } catch (err) {
+        this.output('Unable to initialize Accelerometer and Gyroscope. Your browser may not support it', 'https://www.w3.org/TR/generic-sensor/');
+        return;
+      }
+
       switch (filter) {
+        case "m":
+          this.filter = "Magnetometer";
+          this.driver = this.magnet;
+          this.accel.start();
+          this.magnet.start();
+          break;
         case "k":
           this.wGyro = -1;
           this.filter = "Kalman";
+          this.driver = this.gyros;
+          this.accel.start();
+          this.gyros.start();
           break;
         case "a":
         case "0":
           this.wGyro = 0;
           this.filter = "Accelerometer";
+          this.driver = this.accel;
+          this.accel.start();
           break;
         case "g":
         case "1":
           this.wGyro = 1;
           this.filter = "Gyroscope";
+          this.driver = this.gyros;
+          this.gyros.start();
           break;
         case "c":
         default:
@@ -564,6 +621,9 @@ class Euler{
             num = 0.98;
           this.wGyro = Math.min(1, Math.max(0, num))
           this.filter = `Complementary (${this.wGyro})`;
+          this.driver = this.gyros;
+          this.accel.start();
+          this.gyros.start();
       }
     }
 
@@ -625,18 +685,7 @@ class Euler{
       this._processOptions();
       this._createViewport();
 
-      try {
-        this.accel = new AccelerometerSensor({ frequency: 60, includesGravity: true });
-        this.gyros = new GyroscopeSensor({ frequency: 60 });
-      } catch (err) {
-        this.output('Unable to initialize Accelerometer and Gyroscope. Your browser may not support it', 'https://www.w3.org/TR/generic-sensor/');
-        return;
-      }
-
-      this.accel.start();
-      this.gyros.start();
-
-      let timestamp = this.gyros.reading.timeStamp;
+      let timestamp = (this.driver === this.gyros) ? this.gyros.reading.timeStamp : 0;
 
       let kalmanY = new KalmanFilter();
       let kalmanX = new KalmanFilter();
@@ -646,15 +695,38 @@ class Euler{
       this.beta = 0.0;
       this.gamma = 0.0;
 
-      this.gyros.onchange = event => {
+      this.accel.onchange = event => {
+        if (this.driver != this.accel)
+          return;
+
         let xAccel = this.accel.reading.accelerationY / 9.81;
         let yAccel = this.accel.reading.accelerationX / 9.81;
         let zAccel = this.accel.reading.accelerationZ / 9.81;
 
         let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
-        xAccel = (xAccel / norm) * 180 / 2;
-        yAccel = (yAccel / norm) * -180 / 2;
-        zAccel = (zAccel / norm);
+        this.beta = (xAccel / norm) * 180 / 2;
+        this.gamma = (yAccel / norm) * -180 / 2;
+        this.alpha = (zAccel / norm);
+      };
+
+      this.gyros.onchange = event => {
+        if (this.driver != this.gyros)
+          return;
+
+        let xAccel = 0;
+        let yAccel = 0;
+        let zAccel = 0;
+
+        if (this.wGyro != 1) {
+          xAccel = this.accel.reading.accelerationY / 9.81;
+          yAccel = this.accel.reading.accelerationX / 9.81;
+          zAccel = this.accel.reading.accelerationZ / 9.81;
+
+          let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
+          xAccel = (xAccel / norm) * 90;
+          yAccel = (yAccel / norm) * -90;
+          zAccel = (zAccel / norm);
+        }
 
         let xGyro = this.gyros.reading.rotationRateX * 180 / Math.PI;
         let yGyro = this.gyros.reading.rotationRateY * 180 / Math.PI;
@@ -677,7 +749,20 @@ class Euler{
           this.beta = this.wGyro * (this.beta + xGyro * dt) + (1.0 - this.wGyro) * xAccel;
           this.gamma = this.wGyro * (this.gamma + yGyro * dt) + (1.0 - this.wGyro) * yAccel;
         }
-      }
+      };
+
+      this.magnet.onchange = event => {
+        if (this.driver != this.magnet)
+          return;
+
+        let rotationMatrix = new RotationMatrix();
+        rotationMatrix.setFromSensorData(this.accel.reading, this.magnet.reading);
+ 
+        let euler = new Euler();
+        euler.setFromRotationMatrix(rotationMatrix);
+
+        this.alpha = euler.alpha;
+      };
     }
 
     output(str, link) {
@@ -737,7 +822,9 @@ class Euler{
       this.mCompassRenderer.setRotationMatrix(this.rotationMatrix);
 
       euler.setFromRotationMatrix(orientationMatrix);
-      this.mCompassRenderer.setCompassHeading(360 - euler.alpha);
+      let value = 360 - euler.alpha;
+      value = Math.floor(value < 360 ? value : value % 360);
+      this.mCompassRenderer.setCompassHeading(value);
     }
 
     render() {
@@ -839,7 +926,7 @@ class Euler{
     }
 
     setCompassHeading(heading) {
-      this.heading = heading < 360 ? heading : heading % 360;
+      this.heading = heading;
     }
 
     setCompassFilter(filter) {
@@ -860,7 +947,7 @@ class Euler{
       this.setMatrixUniforms();
 
       // Display compass heading
-      var thisCompassHeading = Math.floor(this.heading);
+      var thisCompassHeading = this.heading;
       if (this.lastCompassHeading !== thisCompassHeading) {
         this.lastCompassHeading = thisCompassHeading;
         this.compass.headingElement.textContent = this.lastCompassHeading;
