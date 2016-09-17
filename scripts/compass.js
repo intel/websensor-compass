@@ -581,11 +581,13 @@ class Euler{
         this.accel = new AccelerometerSensor({ frequency: 50, includesGravity: true });
         this.gyros = new GyroscopeSensor({ frequency: 50 });
         this.magnet = new MagnetometerSensor({ frequency: 50 });
+        this.light = new AmbientLightSensor({ frequency: 50 });
       } catch (err) {
         this.output('Unable to initialize Accelerometer and Gyroscope. Your browser may not support it', 'https://www.w3.org/TR/generic-sensor/');
         return;
       }
 
+      this.light.start();
       switch (filter) {
         case "m":
           this.filter = "Magnetometer";
@@ -694,6 +696,18 @@ class Euler{
       this.alpha = 0.0;
       this.beta = 0.0;
       this.gamma = 0.0;
+
+      let canvas = document.querySelector("canvas");
+
+      function remap(value, inRangeStart, inRangeEnd, outRangeStart, outRangeEnd) {
+        return outRangeStart + (outRangeEnd - outRangeStart) * ((value - inRangeStart) / (inRangeEnd - inRangeStart));
+      };
+
+      this.light.onchange = event => {
+        let value = Math.min(Math.max(remap(event.reading.illuminance, 0, 100, 0, 100), 0), 100);
+        canvas.style = `filter: grayscale(${value}%)`;
+        console.log(`filter: grayscale(${value}%)`);
+      }
 
       this.accel.onchange = event => {
         if (this.driver != this.accel)
