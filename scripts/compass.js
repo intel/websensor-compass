@@ -125,7 +125,7 @@ class RotationMatrix extends DOMMatrix {
     return matrix;
   }
 
-  fromSensorData(gravity, geomagnetic) {
+  static fromSensorData(gravity, geomagnetic) {
     let Ax = gravity.x;
     let Ay = gravity.y;
     let Az = gravity.z;
@@ -154,17 +154,21 @@ class RotationMatrix extends DOMMatrix {
     let My = Az*Hx - Ax*Hz;
     let Mz = Ax*Hy - Ay*Hx;
 
-    this.m11 = Hx;
-    this.m12 = Hy;
-    this.m13 = Hz;
+    let matrix = new RotationMatrix();
 
-    this.m21 = Mx;
-    this.m22 = My;
-    this.m23 = Mz;
+    matrix.m11 = Hx;
+    matrix.m12 = Hy;
+    matrix.m13 = Hz;
 
-    this.m31 = Ax;
-    this.m32 = Ay;
-    this.m33 = Az;
+    matrix.m21 = Mx;
+    matrix.m22 = My;
+    matrix.m23 = Mz;
+
+    matrix.m31 = Ax;
+    matrix.m32 = Ay;
+    matrix.m33 = Az;
+
+    return matrix;
   }
 
   static fromEuler(euler) {
