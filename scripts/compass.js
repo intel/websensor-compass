@@ -74,34 +74,65 @@ class KalmanFilter {
 };
 
 
-class RotationMatrix {
-  constructor(m11, m12, m13, m21, m22, m23, m31, m32, m33) {
-    var outMatrix;
+class RotationMatrix extends DOMMatrix {
+  constructor(...args) {
+    if (args.length == 16) {
+      super(...args);
+      return;
+    }
 
-    this.elements = new Float32Array(9);
-    this.set(m11, m12, m13, m21, m22, m23, m31, m32, m33);
+    super();
+
+    if (args.length == 9) {
+      this.m11 = args[0];
+      this.m12 = args[1];
+      this.m13 = args[2];
+
+      this.m21 = args[3];
+      this.m22 = args[4];
+      this.m23 = args[5];
+
+      this.m31 = args[6];
+      this.m32 = args[7];
+      this.m33 = args[8];
+    }
   }
 
   set(m11, m12, m13, m21, m22, m23, m31, m32, m33) {
-    this.elements[ 0 ] = m11 || 1;
-    this.elements[ 1 ] = m12 || 0;
-    this.elements[ 2 ] = m13 || 0;
-    this.elements[ 3 ] = m21 || 0;
-    this.elements[ 4 ] = m22 || 1;
-    this.elements[ 5 ] = m23 || 0;
-    this.elements[ 6 ] = m31 || 0;
-    this.elements[ 7 ] = m32 || 0;
-    this.elements[ 8 ] = m33 || 1;
+    this.m11 = m11 || 1;
+    this.m12 = m12 || 0;
+    this.m13 = m13 || 0;
+    this.m21 = m21 || 0;
+    this.m22 = m22 || 1;
+    this.m23 = m23 || 0;
+    this.m31 = m31 || 0;
+    this.m32 = m32 || 0;
+    this.m33 = m33 || 1;
   }
 
-  setFromSensorData(gravity, geomagnetic) {
-    let Ax = gravity.accelerationX;
-    let Ay = gravity.accelerationY;
-    let Az = gravity.accelerationZ;
+  static fromRotationMatrix(other) {
+    let matrix = new RotationMatrix();
+    matrix.m11 = other.m11;
+    matrix.m12 = other.m12;
+    matrix.m13 = other.m13;
+    matrix.m21 = other.m21;
+    matrix.m22 = other.m22;
+    matrix.m23 = other.m23;
+    matrix.m31 = other.m31;
+    matrix.m32 = other.m32;
+    matrix.m33 = other.m33;
 
-    let Ex = geomagnetic.magneticFieldX;
-    let Ey = geomagnetic.magneticFieldY;
-    let Ez = geomagnetic.magneticFieldZ;
+    return matrix;
+  }
+
+  fromSensorData(gravity, geomagnetic) {
+    let Ax = gravity.x;
+    let Ay = gravity.y;
+    let Az = gravity.z;
+
+    let Ex = geomagnetic.x;
+    let Ey = geomagnetic.y;
+    let Ez = geomagnetic.z;
 
     let Hx = Ey*Az - Ez*Ay;
     let Hy = Ez*Ax - Ex*Az;
@@ -123,71 +154,54 @@ class RotationMatrix {
     let My = Az*Hx - Ax*Hz;
     let Mz = Ax*Hy - Ay*Hx;
 
-    this.set(Hx, Hy, Hz,
-             Mx, My, Mz,
-             Ax, Ay, Az);
+    this.m11 = Hx;
+    this.m12 = Hy;
+    this.m13 = Hz;
+
+    this.m21 = Mx;
+    this.m22 = My;
+    this.m23 = Mz;
+
+    this.m31 = Ax;
+    this.m32 = Ay;
+    this.m33 = Az;
   }
 
-  copy(matrix) {
-    this.elements[ 0 ] = matrix.elements[ 0 ];
-    this.elements[ 1 ] = matrix.elements[ 1 ];
-    this.elements[ 2 ] = matrix.elements[ 2 ];
-    this.elements[ 3 ] = matrix.elements[ 3 ];
-    this.elements[ 4 ] = matrix.elements[ 4 ];
-    this.elements[ 5 ] = matrix.elements[ 5 ];
-    this.elements[ 6 ] = matrix.elements[ 6 ];
-    this.elements[ 7 ] = matrix.elements[ 7 ];
-    this.elements[ 8 ] = matrix.elements[ 8 ];
-  }
-
-  identity() {
-    this.set(
-      1, 0, 0,
-      0, 1, 0,
-      0, 0, 1
-    );
-    return this;
-  }
-
-  setFromEuler(euler) {
-    let _x, _y, _z;
-    let cX, cY, cZ, sX, sY, sZ;
-
+  static fromEuler(euler) {
     euler = euler || {};
 
-    _z = ( euler.alpha || 0 ) * degToRad;
-    _x = ( euler.beta || 0 ) * degToRad;
-    _y = ( euler.gamma || 0 ) * degToRad;
+    let z = (euler.alpha || 0) * degToRad;
+    let x = (euler.beta || 0) * degToRad;
+    let y = (euler.gamma || 0) * degToRad;
 
-    cX = Math.cos( _x );
-    cY = Math.cos( _y );
-    cZ = Math.cos( _z );
-    sX = Math.sin( _x );
-    sY = Math.sin( _y );
-    sZ = Math.sin( _z );
+    let cX = Math.cos(x);
+    let cY = Math.cos(y);
+    let cZ = Math.cos(z);
+    let sX = Math.sin(x);
+    let sY = Math.sin(y);
+    let sZ = Math.sin(z);
 
     //
     // ZXY-ordered rotation matrix construction.
     //
-    this.set(
-      cZ * cY - sZ * sX * sY, // 1,1
-      - cX * sZ,              // 1,2
-      cY * sZ * sX + cZ * sY, // 1,3
+    let matrix = new RotationMatrix();
 
-      cY * sZ + cZ * sX * sY, // 2,1
-      cZ * cX,                // 2,2
-      sZ * sY - cZ * cY * sX, // 2,3
+    matrix.m11 = cZ * cY - sZ * sX * sY;
+    matrix.m12 = - cX * sZ;
+    matrix.m13 = cY * sZ * sX + cZ * sY;
 
-      - cX * sY,              // 3,1
-      sX,                     // 3,2
-      cX * cY                 // 3,3
-    );
+    matrix.m21 = cY * sZ + cZ * sX * sY;
+    matrix.m22 = cZ * cX;
+    matrix.m23 = sZ * sY - cZ * cY * sX;
 
-    this.normalize();
-    return this;
+    matrix.m31 = - cX * sY;
+    matrix.m32 = sX;
+    matrix.m33 = cX * cY;
+
+    return matrix.normalizeSelf();
   }
 
-  setFromQuaternion(q) {
+  static fromQuaternion(q) {
     let sqw, sqx, sqy, sqz;
 
     sqw = q.w * q.w;
@@ -195,195 +209,94 @@ class RotationMatrix {
     sqy = q.y * q.y;
     sqz = q.z * q.z;
 
-    this.set(
-      sqw + sqx - sqy - sqz,       // 1,1
-      2 * (q.x * q.y - q.w * q.z), // 1,2
-      2 * (q.x * q.z + q.w * q.y), // 1,3
-
-      2 * (q.x * q.y + q.w * q.z), // 2,1
-      sqw - sqx + sqy - sqz,       // 2,2
-      2 * (q.y * q.z - q.w * q.x), // 2,3
-
-      2 * (q.x * q.z - q.w * q.y), // 3,1
-      2 * (q.y * q.z + q.w * q.x), // 3,2
-      sqw - sqx - sqy + sqz        // 3,3
-    );
-
-    return this;
-  }
-
-  static multiplyMatrices(a, b) {
     let matrix = new RotationMatrix();
-    let aE = a.elements;
-    let bE = b.elements;
 
-    matrix.set(
-      aE[0] * bE[0] + aE[1] * bE[3] + aE[2] * bE[6],
-      aE[0] * bE[1] + aE[1] * bE[4] + aE[2] * bE[7],
-      aE[0] * bE[2] + aE[1] * bE[5] + aE[2] * bE[8],
+    matrix.m11 = sqw + sqx - sqy - sqz;
+    matrix.m12 = 2 * (q.x * q.y - q.w * q.z);
+    matrix.m13 = 2 * (q.x * q.z + q.w * q.y);
 
-      aE[3] * bE[0] + aE[4] * bE[3] + aE[5] * bE[6],
-      aE[3] * bE[1] + aE[4] * bE[4] + aE[5] * bE[7],
-      aE[3] * bE[2] + aE[4] * bE[5] + aE[5] * bE[8],
+    matrix.m21 = 2 * (q.x * q.y + q.w * q.z);
+    matrix.m22 = sqw - sqx + sqy - sqz;
+    matrix.m23 = 2 * (q.y * q.z - q.w * q.x);
 
-      aE[6] * bE[0] + aE[7] * bE[3] + aE[8] * bE[6],
-      aE[6] * bE[1] + aE[7] * bE[4] + aE[8] * bE[7],
-      aE[6] * bE[2] + aE[7] * bE[5] + aE[8] * bE[8]
-    );
+    matrix.m31 = 2 * (q.x * q.z - q.w * q.y);
+    matrix.m32 = 2 * (q.y * q.z + q.w * q.x);
+    matrix.m33 = sqw - sqx - sqy + sqz;
 
     return matrix;
   }
 
-  static normalize(matrix) {
-    let R = matrix.elements;
-
+  normalizeSelf() {
     // Calculate matrix determinant
     let determinant = 
-        R[0] * R[4] * R[8] 
-      - R[0] * R[5] * R[7] 
-      - R[1] * R[3] * R[8] 
-      + R[1] * R[5] * R[6] 
-      + R[2] * R[3] * R[7] 
-      - R[2] * R[4] * R[6];
+        this.m11 * this.m22 * this.m33 
+      - this.m11 * this.m23 * this.m32 
+      - this.m12 * this.m21 * this.m33
+      + this.m12 * this.m23 * this.m31 
+      + this.m13 * this.m21 * this.m32 
+      - this.m13 * this.m22 * this.m31;
+
+    console.log(determinant);
 
     // Normalize matrix values
-    R[0] /= determinant;
-    R[1] /= determinant;
-    R[2] /= determinant;
-    R[3] /= determinant;
-    R[4] /= determinant;
-    R[5] /= determinant;
-    R[6] /= determinant;
-    R[7] /= determinant;
-    R[8] /= determinant;
-
-    matrix.elements = R;
-
-    return matrix;
-  }
-
-  static rotateByAxisAngle(targetRotationMatrix, axis, angle) {
-    let outputMatrix = new RotationMatrix();
-    let transformMatrix = new RotationMatrix();
-
-    let sA, cA;
-    let validAxis = false;
-
-    transformMatrix.identity(); // reset transform matrix
-
-    validAxis = false;
-
-    sA = Math.sin( angle );
-    cA = Math.cos( angle );
-
-    if ( axis[ 0 ] === 1 && axis[ 1 ] === 0 && axis[ 2 ] === 0 ) { // x
-      validAxis = true;
-      transformMatrix.elements[4] = cA;
-      transformMatrix.elements[5] = -sA;
-      transformMatrix.elements[7] = sA;
-      transformMatrix.elements[8] = cA;
-    } else if ( axis[ 1 ] === 1 && axis[ 0 ] === 0 && axis[ 2 ] === 0 ) { // y
-      validAxis = true;
-      transformMatrix.elements[0] = cA;
-      transformMatrix.elements[2] = sA;
-      transformMatrix.elements[6] = -sA;
-      transformMatrix.elements[8] = cA;
-    } else if ( axis[ 2 ] === 1 && axis[ 0 ] === 0 && axis[ 1 ] === 0 ) { // z
-      validAxis = true;
-      transformMatrix.elements[0] = cA;
-      transformMatrix.elements[1] = -sA;
-      transformMatrix.elements[3] = sA;
-      transformMatrix.elements[4] = cA;
-    }
-
-    if (validAxis) {  
-      outputMatrix = this.multiplyMatrices( targetRotationMatrix, transformMatrix );
-      outputMatrix = this.normalize( outputMatrix );
-    } else {
-      outputMatrix = targetRotationMatrix;
-    }
-
-    return outputMatrix;
-  }
-
-  multiply(m) {
-    let outMatrix = this.multiplyMatrices( this, m );
-    this.copy( outMatrix );
-
-    return this;
-  }
-
-  rotateX(angle) {
-    let outMatrix = RotationMatrix.rotateByAxisAngle( this, [ 1, 0, 0 ], angle );
-    this.copy( outMatrix );
-
-    return this;
-  };
-
-  rotateY(angle) {
-    let outMatrix = RotationMatrix.rotateByAxisAngle( this, [ 0, 1, 0 ], angle );
-    this.copy( outMatrix );
-
-    return this;
-  }
-
-  rotateZ(angle) {
-    let outMatrix = RotationMatrix.rotateByAxisAngle( this, [ 0, 0, 1 ], angle );
-    this.copy( outMatrix );
+    this.m11 = this.m11 / determinant;
+    this.m12 = this.m12 / determinant;
+    this.m13 = this.m13 / determinant;
+    this.m21 = this.m21 / determinant;
+    this.m22 = this.m22 / determinant;
+    this.m23 = this.m23 / determinant;
+    this.m31 = this.m31 / determinant;
+    this.m32 = this.m32 / determinant;
+    this.m33 = this.m33 / determinant;
 
     return this;
   }
 
   normalize() {
-    return RotationMatrix.normalize( this );
+    return RotationMatrix.fromRotationMatrix(this).normalizeSelf();
   }
 };
 
 class Euler{
   constructor(alpha, beta, gamma) {
-    this.set( alpha, beta, gamma );
+    this.alpha = alpha;
+    this.beta = beta;
+    this.gamma = gamma;
   }
 
-  set(alpha, beta, gamma) {
-    this.alpha = alpha || 0;
-    this.beta  = beta  || 0;
-    this.gamma = gamma || 0;
+  static fromEuler(other) {
+    let euler = new Euler();
+    euler.alpha = other.alpha;
+    euler.beta  = other.beta;
+    euler.gamma = other.gamma;
   }
 
-  copy(inEuler) {
-    this.alpha = inEuler.alpha;
-    this.beta  = inEuler.beta;
-    this.gamma = inEuler.gamma;
-  }
+  static fromRotationMatrix(matrix) {
+    let _alpha, _beta, _gamma;
 
-  setFromRotationMatrix(matrix) {
-    let R, _alpha, _beta, _gamma;
-
-    R = matrix.elements;
-
-    if (R[8] > 0) { // cos(beta) > 0
-      _alpha = Math.atan2(-R[1], R[4]);
-      _beta  = Math.asin(R[7]); // beta (-pi/2, pi/2)
-      _gamma = Math.atan2(-R[6], R[8]); // gamma (-pi/2, pi/2)
-    } else if (R[8] < 0) {  // cos(beta) < 0
-      _alpha = Math.atan2(R[1], -R[4]);
-      _beta  = -Math.asin(R[7]);
+    if (matrix.m33 > 0) { // cos(beta) > 0
+      _alpha = Math.atan2(-matrix.m12, matrix.m22);
+      _beta  = Math.asin(matrix.m32); // beta (-pi/2, pi/2)
+      _gamma = Math.atan2(-matrix.m31, matrix.m33); // gamma (-pi/2, pi/2)
+    } else if (matrix.m33 < 0) {  // cos(beta) < 0
+      _alpha = Math.atan2(matrix.m12, -matrix.m22);
+      _beta  = -Math.asin(matrix.m32);
       _beta  += (_beta >= 0) ? - Math.PI : Math.PI; // beta [-pi,-pi/2) U (pi/2,pi)
-      _gamma = Math.atan2(R[6], -R[8]); // gamma (-pi/2, pi/2)
-    } else { // R[8] == 0
-      if (R[6] > 0) {  // cos(gamma) == 0, cos(beta) > 0
-        _alpha = Math.atan2(-R[1], R[4]);
-        _beta  = Math.asin(R[7]); // beta [-pi/2, pi/2]
+      _gamma = Math.atan2(matrix.m31, -matrix.m33); // gamma (-pi/2, pi/2)
+    } else { // matrix.m33 == 0
+      if (matrix.m31 > 0) {  // cos(gamma) == 0, cos(beta) > 0
+        _alpha = Math.atan2(-matrix.m12, matrix.m22);
+        _beta  = Math.asin(matrix.m32); // beta [-pi/2, pi/2]
         _gamma = - (Math.PI / 2); // gamma = -pi/2
-      } else if (R[6] < 0) { // cos(gamma) == 0, cos(beta) < 0
-        _alpha = Math.atan2(R[1], -R[4]);
-        _beta  = -Math.asin(R[7]);
+      } else if (matrix.m31 < 0) { // cos(gamma) == 0, cos(beta) < 0
+        _alpha = Math.atan2(matrix.m12, -matrix.m22);
+        _beta  = -Math.asin(matrix.m32);
         _beta  += (_beta >= 0) ? - Math.PI : Math.PI; // beta [-pi,-pi/2) U (pi/2,pi)
         _gamma = - (Math.PI / 2); // gamma = -pi/2
-      } else { // R[6] == 0, cos(beta) == 0
+      } else { // matrix.m31 == 0, cos(beta) == 0
         // gimbal lock discontinuity
-        _alpha = Math.atan2(R[3], R[0]);
-        _beta  = (R[7] > 0) ? (Math.PI / 2) : - (Math.PI / 2); // beta = +-pi/2
+        _alpha = Math.atan2(matrix.m21, matrix.m11);
+        _beta  = (matrix.m32 > 0) ? (Math.PI / 2) : - (Math.PI / 2); // beta = +-pi/2
         _gamma = 0; // gamma = 0
       }
     }
@@ -399,10 +312,10 @@ class Euler{
     _gamma *= radToDeg;
 
     // apply derived euler angles to current object
-    this.set(_alpha, _beta, _gamma);
+    return new Euler(_alpha, _beta, _gamma);
   }
 
-  setFromQuaternion(q) {
+  static fromQuaternion(q) {
     let _alpha, _beta, _gamma;
 
     var sqw = q.w * q.w;
@@ -452,34 +365,23 @@ class Euler{
     _gamma *= radToDeg;
 
    // apply derived euler angles to current object
-    this.set( _alpha, _beta, _gamma );
+    return new Euler(_alpha, _beta, _gamma);
   }
 
-  rotateX(angle) {
-    Euler.rotateByAxisAngle( this, [ 1, 0, 0 ], angle );
+  rotateAxisAngle(x, y, z, angle) {
+    let matrix = RotationMatrix.fromEuler(this);
+    matrix.rotateAxisAngleSelf(x, y, z, angle);
+
+    return Euler.fromRotationMatrix(matrix);
+  }
+
+  rotateAxisAngleSelf(x, y, z, angle) {
+    let other = this.rotateAxisAngle(x, y, z, angle);
+    this.alpha = other.alpha;
+    this.beta = other.beta;
+    this.gamma = other.gamma;
+
     return this;
-  }
-
-  rotateY(angle) {
-    Euler.rotateByAxisAngle( this, [ 0, 1, 0 ], angle );
-    return this;
-  }
-
-  rotateZ(angle) {
-    Euler.rotateByAxisAngle( this, [ 0, 0, 1 ], angle );
-    return this;
-  }
-
-  static rotateByAxisAngle(targetEuler, axis, angle) {
-    let _matrix = new RotationMatrix();
-    let outEuler;
-
-    _matrix.setFromEuler( targetEuler );
-    _matrix = RotationMatrix.rotateByAxisAngle( _matrix, axis, angle );
-
-    targetEuler.setFromRotationMatrix( _matrix );
-
-    return targetEuler;
   }
 };
 
@@ -583,7 +485,7 @@ class Euler{
         this.magnet = new Magnetometer({ frequency: 50 });
         this.light = new AmbientLightSensor({ frequency: 50 });
       } catch (err) {
-        this.output('Unable to initialize Accelerometer and Gyroscope. Your browser may not support it', 'https://www.w3.org/TR/generic-sensor/');
+        this.output('Unable to initialize sensors: ' + err , 'https://www.w3.org/TR/generic-sensor/');
         return;
       }
 
@@ -715,9 +617,9 @@ class Euler{
         if (this.driver != this.accel)
           return;
 
-        let xAccel = this.accel.reading.accelerationY / 9.81;
-        let yAccel = this.accel.reading.accelerationX / 9.81;
-        let zAccel = this.accel.reading.accelerationZ / 9.81;
+        let xAccel = this.accel.reading.y / 9.81;
+        let yAccel = this.accel.reading.x / 9.81;
+        let zAccel = this.accel.reading.z / 9.81;
 
         let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
         this.beta = (xAccel / norm) * 180 / 2;
@@ -734,9 +636,9 @@ class Euler{
         let zAccel = 0;
 
         if (this.wGyro != 1) {
-          xAccel = this.accel.reading.accelerationY / 9.81;
-          yAccel = this.accel.reading.accelerationX / 9.81;
-          zAccel = this.accel.reading.accelerationZ / 9.81;
+          xAccel = this.accel.reading.y / 9.81;
+          yAccel = this.accel.reading.x / 9.81;
+          zAccel = this.accel.reading.z / 9.81;
 
           let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
           xAccel = (xAccel / norm) * 90;
@@ -744,9 +646,9 @@ class Euler{
           zAccel = (zAccel / norm);
         }
 
-        let xGyro = this.gyros.reading.rotationRateX * 180 / Math.PI;
-        let yGyro = this.gyros.reading.rotationRateY * 180 / Math.PI;
-        let zGyro = this.gyros.reading.rotationRateZ * 180 / Math.PI;
+        let xGyro = this.gyros.reading.x * 180 / Math.PI;
+        let yGyro = this.gyros.reading.y * 180 / Math.PI;
+        let zGyro = this.gyros.reading.z * 180 / Math.PI;
 
         let dt = (this.gyros.reading.timeStamp - timestamp) / (1000 * 1000);
         timestamp = this.gyros.reading.timeStamp;
@@ -771,11 +673,8 @@ class Euler{
         if (this.driver != this.magnet)
           return;
 
-        let rotationMatrix = new RotationMatrix();
-        rotationMatrix.setFromSensorData(this.accel.reading, this.magnet.reading);
- 
-        let euler = new Euler();
-        euler.setFromRotationMatrix(rotationMatrix);
+        let rotationMatrix = RotationMatrix.fromSensorData(this.accel.reading, this.magnet.reading);
+        let euler = Euler.fromRotationMatrix(rotationMatrix);
 
         this.alpha = euler.alpha;
       };
@@ -809,25 +708,13 @@ class Euler{
     }
 
     calculateRotationMatrix() {
-      var euler = new Euler();
-      var orientationMatrix = new RotationMatrix();
-
-      euler.set(this.alpha, this.beta, this.gamma);
-      orientationMatrix.setFromEuler(euler);
+      var orientationMatrix = RotationMatrix.fromEuler(new Euler(this.alpha, this.beta, this.gamma));
 
       let screenOrientationAngle = (window.screen.orientation.angle || 0) * degToRad;
-      orientationMatrix.rotateZ(-screenOrientationAngle);
+      orientationMatrix.rotateAxisAngleSelf(0, 0, 1, -screenOrientationAngle);
 
       // Copy 3x3 RotationMatrix values to 4x4 gl-matrix mat4
-      this.rotationMatrix[0] = orientationMatrix.elements[0];
-      this.rotationMatrix[1] = orientationMatrix.elements[1];
-      this.rotationMatrix[2] = orientationMatrix.elements[2];
-      this.rotationMatrix[4] = orientationMatrix.elements[3];
-      this.rotationMatrix[5] = orientationMatrix.elements[4];
-      this.rotationMatrix[6] = orientationMatrix.elements[5];
-      this.rotationMatrix[8] = orientationMatrix.elements[6];
-      this.rotationMatrix[9] = orientationMatrix.elements[7];
-      this.rotationMatrix[10] = orientationMatrix.elements[8];
+      this.rotationMatrix = orientationMatrix.toFloat32Array();
 
       // Invert compass heading
       mat4.multiply(this.rotationMatrix, this.screenMatrix);
@@ -837,7 +724,7 @@ class Euler{
 
       this.mCompassRenderer.setRotationMatrix(this.rotationMatrix);
 
-      euler.setFromRotationMatrix(orientationMatrix);
+      var euler = Euler.fromRotationMatrix(orientationMatrix);
       let value = 360 - euler.alpha;
       value = Math.floor(value < 360 ? value : value % 360);
       this.mCompassRenderer.setCompassHeading(value);
