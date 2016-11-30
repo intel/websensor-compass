@@ -704,7 +704,7 @@ class Euler{
       };
 
       this.light.onchange = event => {
-        let value = Math.min(Math.max(remap(event.reading.illuminance, 0, 100, 0, 100), 0), 100);
+        let value = Math.min(Math.max(remap(this.light.reading.illuminance, 0, 100, 0, 100), 0), 100);
         canvas.style = `filter: grayscale(${value}%)`;
         console.log(`filter: grayscale(${value}%)`);
       }
