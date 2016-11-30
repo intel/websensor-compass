@@ -126,49 +126,38 @@ class RotationMatrix extends DOMMatrix {
   }
 
   static fromSensorData(gravity, geomagnetic) {
-    let Ax = gravity.x;
-    let Ay = gravity.y;
-    let Az = gravity.z;
+    // The gravity (accelerometer with gravity) vector points towards
+    // the earths core when mostly stationary. The magnetic vector
+    // points to the north, but not necessarily horizontally with the
+    // ground.
+    let cross = (a, b) => {
+      return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0]
+      ];
+    }
 
-    let Ex = geomagnetic.x;
-    let Ey = geomagnetic.y;
-    let Ez = geomagnetic.z;
+    let normalize = (a) => {
+      let norm = Math.sqrt(a[0] ** 2 + a[1] ** 2 + a[2] ** 2);
+      a[0] /= norm;
+      a[1] /= norm;
+      a[2] /= norm;
+      return a;
+    }
 
-    let Hx = Ey*Az - Ez*Ay;
-    let Hy = Ez*Ax - Ex*Az;
-    let Hz = Ex*Ay - Ey*Ax;
+    let uG = normalize([gravity.x, gravity.y, gravity.z]);
+    let uB = normalize([geomagnetic.x, geomagnetic.y, geomagnetic.z]);
 
-    let normH = Math.sqrt(Hx*Hx + Hy*Hy + Hz*Hz);
+    // The cross product between the gravity and magnetic
+    // vector will point east on horizontal plane.
+    let uE = normalize(cross(uG, uB));
 
-    let invH = 1.0 / normH;
-    Hx *= invH;
-    Hy *= invH;
-    Hz *= invH;
+    // The cross product gravity vector and the east vector
+    // will point north on horizontal plane.
+    let uN = normalize(cross(uE, uG));
 
-    let invA = 1.0 / Math.sqrt(Ax*Ax + Ay*Ay + Az*Az);
-    Ax *= invA;
-    Ay *= invA;
-    Az *= invA;
-
-    let Mx = Ay*Hz - Az*Hy;
-    let My = Az*Hx - Ax*Hz;
-    let Mz = Ax*Hy - Ay*Hx;
-
-    let matrix = new RotationMatrix();
-
-    matrix.m11 = Hx;
-    matrix.m12 = Hy;
-    matrix.m13 = Hz;
-
-    matrix.m21 = Mx;
-    matrix.m22 = My;
-    matrix.m23 = Mz;
-
-    matrix.m31 = Ax;
-    matrix.m32 = Ay;
-    matrix.m33 = Az;
-
-    return matrix;
+    return new RotationMatrix(...uN, ...uE, ...uG);
   }
 
   static fromEuler(euler) {
@@ -232,15 +221,13 @@ class RotationMatrix extends DOMMatrix {
 
   normalizeSelf() {
     // Calculate matrix determinant
-    let determinant = 
-        this.m11 * this.m22 * this.m33 
-      - this.m11 * this.m23 * this.m32 
+    let determinant =
+        this.m11 * this.m22 * this.m33
+      - this.m11 * this.m23 * this.m32
       - this.m12 * this.m21 * this.m33
-      + this.m12 * this.m23 * this.m31 
-      + this.m13 * this.m21 * this.m32 
+      + this.m12 * this.m23 * this.m31
+      + this.m13 * this.m21 * this.m32
       - this.m13 * this.m22 * this.m31;
-
-    console.log(determinant);
 
     // Normalize matrix values
     this.m11 = this.m11 / determinant;
@@ -276,47 +263,45 @@ class Euler{
   }
 
   static fromRotationMatrix(matrix) {
-    let _alpha, _beta, _gamma;
+    let alpha, beta, gamma;
 
     if (matrix.m33 > 0) { // cos(beta) > 0
-      _alpha = Math.atan2(-matrix.m12, matrix.m22);
-      _beta  = Math.asin(matrix.m32); // beta (-pi/2, pi/2)
-      _gamma = Math.atan2(-matrix.m31, matrix.m33); // gamma (-pi/2, pi/2)
-    } else if (matrix.m33 < 0) {  // cos(beta) < 0
-      _alpha = Math.atan2(matrix.m12, -matrix.m22);
-      _beta  = -Math.asin(matrix.m32);
-      _beta  += (_beta >= 0) ? - Math.PI : Math.PI; // beta [-pi,-pi/2) U (pi/2,pi)
-      _gamma = Math.atan2(matrix.m31, -matrix.m33); // gamma (-pi/2, pi/2)
-    } else { // matrix.m33 == 0
+      alpha = Math.atan2(-matrix.m12, matrix.m22);
+      beta  = Math.asin(matrix.m32); // beta (-pi/2, pi/2)
+      gamma = Math.atan2(-matrix.m31, matrix.m33); // gamma (-pi/2, pi/2)
+    }
+    else if (matrix.m33 < 0) {  // cos(beta) < 0
+      alpha = Math.atan2(matrix.m12, -matrix.m22);
+      beta  = -Math.asin(matrix.m32);
+      beta  += (beta >= 0) ? -Math.PI : Math.PI; // beta [-pi,-pi/2) U (pi/2,pi)
+      gamma = Math.atan2(matrix.m31, -matrix.m33); // gamma (-pi/2, pi/2)
+    }
+    else { // matrix.m33 == 0
       if (matrix.m31 > 0) {  // cos(gamma) == 0, cos(beta) > 0
-        _alpha = Math.atan2(-matrix.m12, matrix.m22);
-        _beta  = Math.asin(matrix.m32); // beta [-pi/2, pi/2]
-        _gamma = - (Math.PI / 2); // gamma = -pi/2
-      } else if (matrix.m31 < 0) { // cos(gamma) == 0, cos(beta) < 0
-        _alpha = Math.atan2(matrix.m12, -matrix.m22);
-        _beta  = -Math.asin(matrix.m32);
-        _beta  += (_beta >= 0) ? - Math.PI : Math.PI; // beta [-pi,-pi/2) U (pi/2,pi)
-        _gamma = - (Math.PI / 2); // gamma = -pi/2
-      } else { // matrix.m31 == 0, cos(beta) == 0
-        // gimbal lock discontinuity
-        _alpha = Math.atan2(matrix.m21, matrix.m11);
-        _beta  = (matrix.m32 > 0) ? (Math.PI / 2) : - (Math.PI / 2); // beta = +-pi/2
-        _gamma = 0; // gamma = 0
+        alpha = Math.atan2(-matrix.m12, matrix.m22);
+        beta  = Math.asin(matrix.m32); // beta [-pi/2, pi/2]
+        gamma = - (Math.PI / 2); // gamma = -pi/2
+      }
+      else if (matrix.m31 < 0) { // cos(gamma) == 0, cos(beta) < 0
+        alpha = Math.atan2(matrix.m12, -matrix.m22);
+        beta  = -Math.asin(matrix.m32);
+        beta  += (beta >= 0) ? - Math.PI : Math.PI; // beta [-pi,-pi/2) U (pi/2,pi)
+        gamma = - (Math.PI / 2); // gamma = -pi/2
+      }
+      else { // matrix.m31 == 0, cos(beta) == 0
+        // Gimbal lock discontinuity
+        alpha = Math.atan2(matrix.m21, matrix.m11);
+        beta  = (matrix.m32 > 0) ? (Math.PI / 2) : - (Math.PI / 2); // beta = +-pi/2
+        gamma = 0; // gamma = 0
       }
     }
 
     // alpha is in [-pi, pi], make sure it is in [0, 2*pi).
-    if (_alpha < 0) {
-      _alpha += 2 * Math.PI; // alpha [0, 2*pi)
+    if (alpha < 0) {
+      alpha += 2 * Math.PI; // alpha [0, 2*pi)
     }
 
-    // Convert to degrees
-    _alpha *= radToDeg;
-    _beta  *= radToDeg;
-    _gamma *= radToDeg;
-
-    // apply derived euler angles to current object
-    return new Euler(_alpha, _beta, _gamma);
+    return new Euler(alpha * radToDeg, beta * radToDeg, gamma * radToDeg);
   }
 
   static fromQuaternion(q) {
@@ -484,7 +469,7 @@ class Euler{
       let filter = params.get("filter");
 
       try {
-        this.accel = new Accelerometer({ frequency: 50, includesGravity: true });
+        this.accel = new Accelerometer({ frequency: 50, includeGravity: true });
         this.gyros = new Gyroscope({ frequency: 50 });
         this.magnet = new Magnetometer({ frequency: 50 });
         this.light = new AmbientLightSensor({ frequency: 50 });
