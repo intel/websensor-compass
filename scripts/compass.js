@@ -95,13 +95,13 @@ class RotationMatrix {
   }
 
   setFromSensorData(gravity, geomagnetic) {
-    let Ax = gravity.accelerationX;
-    let Ay = gravity.accelerationY;
-    let Az = gravity.accelerationZ;
+    let Ax = gravity.x;
+    let Ay = gravity.y;
+    let Az = gravity.z;
 
-    let Ex = geomagnetic.magneticFieldX;
-    let Ey = geomagnetic.magneticFieldY;
-    let Ez = geomagnetic.magneticFieldZ;
+    let Ex = geomagnetic.x;
+    let Ey = geomagnetic.y;
+    let Ez = geomagnetic.z;
 
     let Hx = Ey*Az - Ez*Ay;
     let Hy = Ez*Ax - Ex*Az;
@@ -715,9 +715,9 @@ class Euler{
         if (this.driver != this.accel)
           return;
 
-        let xAccel = this.accel.reading.accelerationY / 9.81;
-        let yAccel = this.accel.reading.accelerationX / 9.81;
-        let zAccel = this.accel.reading.accelerationZ / 9.81;
+        let xAccel = this.accel.reading.y / 9.81;
+        let yAccel = this.accel.reading.x / 9.81;
+        let zAccel = this.accel.reading.z / 9.81;
 
         let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
         this.beta = (xAccel / norm) * 180 / 2;
@@ -734,9 +734,9 @@ class Euler{
         let zAccel = 0;
 
         if (this.wGyro != 1) {
-          xAccel = this.accel.reading.accelerationY / 9.81;
-          yAccel = this.accel.reading.accelerationX / 9.81;
-          zAccel = this.accel.reading.accelerationZ / 9.81;
+          xAccel = this.accel.reading.y / 9.81;
+          yAccel = this.accel.reading.x / 9.81;
+          zAccel = this.accel.reading.z / 9.81;
 
           let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
           xAccel = (xAccel / norm) * 90;
@@ -744,9 +744,9 @@ class Euler{
           zAccel = (zAccel / norm);
         }
 
-        let xGyro = this.gyros.reading.rotationRateX * 180 / Math.PI;
-        let yGyro = this.gyros.reading.rotationRateY * 180 / Math.PI;
-        let zGyro = this.gyros.reading.rotationRateZ * 180 / Math.PI;
+        let xGyro = this.gyros.reading.x * 180 / Math.PI;
+        let yGyro = this.gyros.reading.y * 180 / Math.PI;
+        let zGyro = this.gyros.reading.z * 180 / Math.PI;
 
         let dt = (this.gyros.reading.timeStamp - timestamp) / (1000 * 1000);
         timestamp = this.gyros.reading.timeStamp;
