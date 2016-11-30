@@ -687,7 +687,9 @@ class Euler{
       this._processOptions();
       this._createViewport();
 
-      let timestamp = (this.driver === this.gyros) ? this.gyros.reading.timeStamp : 0;
+      let timestamp = 0;
+      if (this.driver === this.gyros && this.gyros.reading != null)
+        timestamp = this.gyros.reading.timeStamp;
 
       let kalmanY = new KalmanFilter();
       let kalmanX = new KalmanFilter();
