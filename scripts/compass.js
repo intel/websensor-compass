@@ -589,10 +589,6 @@ class Euler{
       this._processOptions();
       this._createViewport();
 
-      let timestamp = 0;
-      if (this.driver === this.gyros && this.gyros.reading != null)
-        timestamp = this.gyros.reading.timeStamp;
-
       let kalmanY = new KalmanFilter();
       let kalmanX = new KalmanFilter();
       let kalmanZ = new KalmanFilter();
@@ -650,8 +646,11 @@ class Euler{
         let yGyro = this.gyros.reading.y * 180 / Math.PI;
         let zGyro = this.gyros.reading.z * 180 / Math.PI;
 
-        let dt = (this.gyros.reading.timeStamp - timestamp) / (1000 * 1000);
-        timestamp = this.gyros.reading.timeStamp;
+        let dt = 0;
+        if (this.timestamp) {
+          dt = (this.gyros.reading.timeStamp - this.timestamp) / 1000;
+        }
+        this.timestamp = this.gyros.reading.timeStamp;
 
         // Kalmar filter
         if (this.wGyro < 0) {
