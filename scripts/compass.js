@@ -578,9 +578,9 @@ class Euler{
       let filter = params.get("filter");
 
       try {
-        this.accel = new AccelerometerSensor({ frequency: 50, includesGravity: true });
-        this.gyros = new GyroscopeSensor({ frequency: 50 });
-        this.magnet = new MagnetometerSensor({ frequency: 50 });
+        this.accel = new Accelerometer({ frequency: 50, includesGravity: true });
+        this.gyros = new Gyroscope({ frequency: 50 });
+        this.magnet = new Magnetometer({ frequency: 50 });
         this.light = new AmbientLightSensor({ frequency: 50 });
       } catch (err) {
         this.output('Unable to initialize Accelerometer and Gyroscope. Your browser may not support it', 'https://www.w3.org/TR/generic-sensor/');
