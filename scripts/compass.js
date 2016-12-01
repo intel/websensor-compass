@@ -73,17 +73,204 @@ class KalmanFilter {
   }
 };
 
+if (typeof DOMMatrix == "undefined") {
+  var DOMMatrix = class DOMMatrix {
+    constructor(...args) {
+      if (args.length == 0) {
+        args = [1, 0, 0, 1, 0, 0];
+      }
+
+      if (args.length == 6) {
+        let nargs = [
+          args[0], args[1], 0, 0,
+          args[2], args[3], 0, 0,
+          0,       0,       0, 1,
+          args[4], args[5], 0, 1
+        ] 
+        args = nargs;
+      }
+
+      if (args.length != 16) {
+        throw new TypeError;
+      }
+
+      this.a = this.m11 = args[0];
+      this.b = this.m12 = args[1];
+      this.m13 = args[2];
+      this.m14 = args[3];
+      this.c = this.m21 = args[4];
+      this.d = this.m22 = args[5];
+      this.m23 = args[6];
+      this.m24 = args[7];
+      this.m31 = args[8];
+      this.m32 = args[9];
+      this.m33 = args[10];
+      this.m34 = args[11];
+      this.e = this.m41 = args[12];
+      this.f = this.m42 = args[13];
+      this.m43 = args[14];
+      this.m44 = args[15];
+
+      this.is2D = true;
+      for (let entry of ["m31", "m32", "m13", "m23", "m43", "m14", "m24", "m34"]) {
+        if (this[entry] != 0)
+          this.is2D = false;
+          break;
+      }
+      for (let entry of ["m33", "m44"]) {
+        if (this[entry] != 1)
+          this.is2D = false;
+          break;
+      }
+    }
+
+    _set(other) {
+      for (let i = 1; i <= 4; i++) {
+        for (let j = 1; j <= 4; j++) {
+          let entry = `m${i}${j}`;
+          this[entry] = other[entry];
+        }
+      }
+    }
+
+    multiplySelf(other) {
+      let tmp = new DOMMatrix();
+
+      tmp.m11 = (other.m11 * this.m11 + other.m12 * this.m21
+               + other.m13 * this.m31 + other.m14 * this.m41);
+      tmp.m12 = (other.m11 * this.m12 + other.m12 * this.m22
+               + other.m13 * this.m32 + other.m14 * this.m42);
+      tmp.m13 = (other.m11 * this.m13 + other.m12 * this.m23
+               + other.m13 * this.m33 + other.m14 * this.m43);
+      tmp.m14 = (other.m11 * this.m14 + other.m12 * this.m24
+               + other.m13 * this.m34 + other.m14 * this.m44);
+
+      tmp.m21 = (other.m21 * this.m11 + other.m22 * this.m21
+               + other.m23 * this.m31 + other.m24 * this.m41);
+      tmp.m22 = (other.m21 * this.m12 + other.m22 * this.m22
+               + other.m23 * this.m32 + other.m24 * this.m42);
+      tmp.m23 = (other.m21 * this.m13 + other.m22 * this.m23
+               + other.m23 * this.m33 + other.m24 * this.m43);
+      tmp.m24 = (other.m21 * this.m14 + other.m22 * this.m24
+               + other.m23 * this.m34 + other.m24 * this.m44);
+
+      tmp.m31 = (other.m31 * this.m11 + other.m32 * this.m21
+               + other.m33 * this.m31 + other.m34 * this.m41);
+      tmp.m32 = (other.m31 * this.m12 + other.m32 * this.m22
+               + other.m33 * this.m32 + other.m34 * this.m42);
+      tmp.m33 = (other.m31 * this.m13 + other.m32 * this.m23
+               + other.m33 * this.m33 + other.m34 * this.m43);
+      tmp.m34 = (other.m31 * this.m14 + other.m32 * this.m24
+               + other.m33 * this.m34 + other.m34 * this.m44);
+
+      tmp.m41 = (other.m41 * this.m11 + other.m42 * this.m21
+               + other.m43 * this.m31 + other.m44 * this.m41);
+      tmp.m42 = (other.m41 * this.m12 + other.m42 * this.m22
+               + other.m43 * this.m32 + other.m44 * this.m42);
+      tmp.m43 = (other.m41 * this.m13 + other.m42 * this.m23
+               + other.m43 * this.m33 + other.m44 * this.m43);
+      tmp.m44 = (other.m41 * this.m14 + other.m42 * this.m24
+               + other.m43 * this.m34 + other.m44 * this.m44);
+
+      this._set(tmp);
+    }
+
+
+    rotateAxisAngleSelf(x, y, z, angle) {
+      let length = Math.sqrt(x * x + y * y + z * z);
+
+      if (length == 0) {
+          // A direction vector that cannot be normalized, such as [0, 0, 0], will cause the rotation to not be applied.
+          return this;
+      } else if (length != 1) {
+          x /= length;
+          y /= length;
+          z /= length;
+      }
+
+      // Angles are in degrees. Switch to radians.
+      angle = angle * degToRad;
+      let sinTheta = Math.sin(angle);
+      let cosTheta = Math.cos(angle);
+
+      let mat = new DOMMatrix();
+
+      // Optimize cases where the axis is along a major axis
+      if (x == 1 && y == 0 && z == 0) {
+        mat.m11 = 1;
+        mat.m12 = 0;
+        mat.m13 = 0;
+        mat.m21 = 0;
+        mat.m22 = cosTheta;
+        mat.m23 = sinTheta;
+        mat.m31 = 0;
+        mat.m32 = -sinTheta;
+        mat.m33 = cosTheta;
+        mat.m14 = mat.m24 = mat.m34 = 0;
+        mat.m41 = mat.m42 = mat.m43 = 0;
+        mat.m44 = 1;
+      } else if (x == 0 && y == 1 && z == 0) {
+        mat.m11 = cosTheta;
+        mat.m12 = 0;
+        mat.m13 = -sinTheta;
+        mat.m21 = 0;
+        mat.m22 = 1;
+        mat.m23 = 0;
+        mat.m31 = sinTheta;
+        mat.m32 = 0;
+        mat.m33 = cosTheta;
+        mat.m14 = mat.m24 = mat.m34 = 0;
+        mat.m41 = mat.m42 = mat.m43 = 0;
+        mat.m44 = 1;
+      } else if (x == 0 && y == 0 && z == 1) {
+        mat.m11 = cosTheta;
+        mat.m12 = sinTheta;
+        mat.m13 = 0;
+        mat.m21 = -sinTheta;
+        mat.m22 = cosTheta;
+        mat.m23 = 0;
+        mat.m31 = 0;
+        mat.m32 = 0;
+        mat.m33 = 1;
+        mat.m14 = mat.m24 = mat.m34 = 0;
+        mat.m41 = mat.m42 = mat.m43 = 0;
+        mat.m44 = 1;
+      } else {
+        // This case is the rotation about an arbitrary unit vector.
+        let oneMinusCosTheta = 1 - cosTheta;
+        mat.m11 = cosTheta + x * x * oneMinusCosTheta;
+        mat.m12 = y * x * oneMinusCosTheta + z * sinTheta;
+        mat.m13 = z * x * oneMinusCosTheta - y * sinTheta;
+        mat.m21 = x * y * oneMinusCosTheta - z * sinTheta;
+        mat.m22 = cosTheta + y * y * oneMinusCosTheta;
+        mat.m23 = z * y * oneMinusCosTheta + x * sinTheta;
+        mat.m31 = x * z * oneMinusCosTheta + y * sinTheta;
+        mat.m32 = y * z * oneMinusCosTheta - x * sinTheta;
+        mat.m33 = cosTheta + z * z * oneMinusCosTheta;
+        mat.m14 = mat.m24 = mat.m34 = 0;
+        mat.m41 = mat.m42 = mat.m43 = 0;
+        mat.m44 = 1;
+      }
+
+      this.multiplySelf(mat);
+      return this;
+    }
+
+    toFloat32Array() {
+      return new Float32Array([
+        this.m11, this.m12, this.m13, this.m14,
+        this.m21, this.m22, this.m23, this.m24,
+        this.m31, this.m32, this.m33, this.m34,
+        this.m41, this.m42, this.m43, this.m44
+      ]);
+    }
+  }
+} 
 
 class RotationMatrix extends DOMMatrix {
   constructor(...args) {
-    if (args.length == 16) {
-      super(...args);
-      return;
-    }
-
-    super();
-
     if (args.length == 9) {
+      super();
       this.m11 = args[0];
       this.m12 = args[1];
       this.m13 = args[2];
@@ -95,19 +282,10 @@ class RotationMatrix extends DOMMatrix {
       this.m31 = args[6];
       this.m32 = args[7];
       this.m33 = args[8];
+      return;
     }
-  }
 
-  set(m11, m12, m13, m21, m22, m23, m31, m32, m33) {
-    this.m11 = m11 || 1;
-    this.m12 = m12 || 0;
-    this.m13 = m13 || 0;
-    this.m21 = m21 || 0;
-    this.m22 = m22 || 1;
-    this.m23 = m23 || 0;
-    this.m31 = m31 || 0;
-    this.m32 = m32 || 0;
-    this.m33 = m33 || 1;
+    super(...args);
   }
 
   static fromRotationMatrix(other) {
