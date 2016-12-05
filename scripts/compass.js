@@ -131,56 +131,38 @@ if (typeof DOMMatrix == "undefined") {
           this[entry] = other[entry];
         }
       }
+      return this;
+    }
+
+    _multiply(A, B) {
+      let res = [];
+      let a = A.toFloat32Array();
+      let b = B.toFloat32Array();
+
+      for (let i = 0; i < 16; i += 4) {
+        for (let j = 0; j < 4; ++j) {
+          res[i+j] = (b[i+0] * a[j+0]) + (b[i+1] * a[j+4])
+                   + (b[i+2] * a[j+8]) + (b[i+3] * a[j+12]);
+        }
+      }
+
+      return DOMMatrix.fromFloat32Array(res);
     }
 
     multiplySelf(other) {
-      let tmp = new DOMMatrix();
-
-      tmp.m11 = (other.m11 * this.m11 + other.m12 * this.m21
-               + other.m13 * this.m31 + other.m14 * this.m41);
-      tmp.m12 = (other.m11 * this.m12 + other.m12 * this.m22
-               + other.m13 * this.m32 + other.m14 * this.m42);
-      tmp.m13 = (other.m11 * this.m13 + other.m12 * this.m23
-               + other.m13 * this.m33 + other.m14 * this.m43);
-      tmp.m14 = (other.m11 * this.m14 + other.m12 * this.m24
-               + other.m13 * this.m34 + other.m14 * this.m44);
-
-      tmp.m21 = (other.m21 * this.m11 + other.m22 * this.m21
-               + other.m23 * this.m31 + other.m24 * this.m41);
-      tmp.m22 = (other.m21 * this.m12 + other.m22 * this.m22
-               + other.m23 * this.m32 + other.m24 * this.m42);
-      tmp.m23 = (other.m21 * this.m13 + other.m22 * this.m23
-               + other.m23 * this.m33 + other.m24 * this.m43);
-      tmp.m24 = (other.m21 * this.m14 + other.m22 * this.m24
-               + other.m23 * this.m34 + other.m24 * this.m44);
-
-      tmp.m31 = (other.m31 * this.m11 + other.m32 * this.m21
-               + other.m33 * this.m31 + other.m34 * this.m41);
-      tmp.m32 = (other.m31 * this.m12 + other.m32 * this.m22
-               + other.m33 * this.m32 + other.m34 * this.m42);
-      tmp.m33 = (other.m31 * this.m13 + other.m32 * this.m23
-               + other.m33 * this.m33 + other.m34 * this.m43);
-      tmp.m34 = (other.m31 * this.m14 + other.m32 * this.m24
-               + other.m33 * this.m34 + other.m34 * this.m44);
-
-      tmp.m41 = (other.m41 * this.m11 + other.m42 * this.m21
-               + other.m43 * this.m31 + other.m44 * this.m41);
-      tmp.m42 = (other.m41 * this.m12 + other.m42 * this.m22
-               + other.m43 * this.m32 + other.m44 * this.m42);
-      tmp.m43 = (other.m41 * this.m13 + other.m42 * this.m23
-               + other.m43 * this.m33 + other.m44 * this.m43);
-      tmp.m44 = (other.m41 * this.m14 + other.m42 * this.m24
-               + other.m43 * this.m34 + other.m44 * this.m44);
-
-      this._set(tmp);
+      return this._set(this._multiply(this, other));
     }
 
+    preMultiplySelf(other) {
+      return this._set(this._multiply(other, this));
+    }
 
     rotateAxisAngleSelf(x, y, z, angle) {
       let length = Math.sqrt(x * x + y * y + z * z);
 
       if (length == 0) {
-          // A direction vector that cannot be normalized, such as [0, 0, 0], will cause the rotation to not be applied.
+          // A direction vector that cannot be normalized, such as [0, 0, 0],
+          // will cause the rotation to not be applied.
           return this;
       } else if (length != 1) {
           x /= length;
@@ -251,9 +233,12 @@ if (typeof DOMMatrix == "undefined") {
         mat.m41 = mat.m42 = mat.m43 = 0;
         mat.m44 = 1;
       }
+ 
+      return this.multiplySelf(mat);
+    }
 
-      this.multiplySelf(mat);
-      return this;
+    static fromFloat32Array(array32) {
+      return new DOMMatrix(...array32);
     }
 
     toFloat32Array() {
