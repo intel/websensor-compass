@@ -3,7 +3,7 @@
  * http://github.com/richtr/Marine-Compass
  *
  * Copyright (c) 2012-2014, Rich Tibbett
- *               2016, Kenneth Christiansen
+ *               2016-2017, Kenneth Christiansen
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ class KalmanFilter {
 };
 
 if (typeof DOMMatrix == "undefined") {
-  var DOMMatrix = class DOMMatrix {
+  window.DOMMatrix = class DOMMatrix {
     constructor(...args) {
       if (args.length == 0) {
         args = [1, 0, 0, 1, 0, 0];
@@ -84,7 +84,7 @@ if (typeof DOMMatrix == "undefined") {
         let nargs = [
           args[0], args[1], 0, 0,
           args[2], args[3], 0, 0,
-          0,       0,       0, 1,
+          0,       0,       1, 0,
           args[4], args[5], 0, 1
         ] 
         args = nargs;
@@ -94,22 +94,25 @@ if (typeof DOMMatrix == "undefined") {
         throw new TypeError;
       }
 
-      this.a = this.m11 = args[0];
-      this.b = this.m12 = args[1];
-      this.m13 = args[2];
-      this.m14 = args[3];
-      this.c = this.m21 = args[4];
-      this.d = this.m22 = args[5];
-      this.m23 = args[6];
-      this.m24 = args[7];
-      this.m31 = args[8];
-      this.m32 = args[9];
-      this.m33 = args[10];
-      this.m34 = args[11];
-      this.e = this.m41 = args[12];
-      this.f = this.m42 = args[13];
-      this.m43 = args[14];
-      this.m44 = args[15];
+      this._m = args;
+      let add = (prop, index) => {
+        Object.defineProperty(this, prop, {
+          set: (v) => this._m[index] = v, get: () => this._m[index]
+        });
+      }
+
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+          add(`m${i+1}${j+1}`, i * 4 + j);
+        }
+      }
+
+      add('a', 0);
+      add('b', 1);
+      add('c', 4);
+      add('d', 4 + 1);
+      add('e', 3 * 4);
+      add('f', 3 * 4 + 1);
 
       this.is2D = true;
       for (let entry of ["m31", "m32", "m13", "m23", "m43", "m14", "m24", "m34"]) {
@@ -124,37 +127,28 @@ if (typeof DOMMatrix == "undefined") {
       }
     }
 
-    _set(other) {
-      for (let i = 1; i <= 4; i++) {
-        for (let j = 1; j <= 4; j++) {
-          let entry = `m${i}${j}`;
-          this[entry] = other[entry];
-        }
-      }
-      return this;
-    }
+    _multiply(a, b) {
+      let result = new Array(16);
 
-    _multiply(A, B) {
-      let res = [];
-      let a = A.toFloat32Array();
-      let b = B.toFloat32Array();
-
-      for (let i = 0; i < 16; i += 4) {
-        for (let j = 0; j < 4; ++j) {
-          res[i+j] = (b[i+0] * a[j+0]) + (b[i+1] * a[j+4])
-                   + (b[i+2] * a[j+8]) + (b[i+3] * a[j+12]);
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+          let c = 0;
+          for (let k = 0; k < 4; k++) {
+              c += a[i * 4 + k] * b[k * 4 + j];
+          }
+          result[i * 4 + j] = c;
         }
       }
 
-      return DOMMatrix.fromFloat32Array(res);
+      return result;
     }
 
     multiplySelf(other) {
-      return this._set(this._multiply(this, other));
+      return this._m = this._multiply(this._m, other._m);
     }
 
     preMultiplySelf(other) {
-      return this._set(this._multiply(other, this));
+      return this._m = this._multiply(other._m, this._m);
     }
 
     rotateAxisAngleSelf(x, y, z, angle) {
