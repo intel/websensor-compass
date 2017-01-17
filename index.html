@@ -24,6 +24,7 @@
   }
   #glCanvas {
     position: absolute;
+    pointer-events: none;
     top: 0;
   }
   .output_err {
@@ -44,53 +45,196 @@
     font-size: 1.8em;
     font-weight: normal;
   }
-
+  button {
+    padding: 8px;
+    margin: 6px 8px 6px 8px;
+    font: 500 16px Roboto, sans-serif;
+    color: #039be5;
+    background-color: transparent;
+    border: 0;
+    border-radius: 2px;
+    box-shadow: none;
+    cursor: pointer;
+    display: inline-block;
+    height: 36px;
+    min-width: 36px;
+    outline: 0;
+    overflow: hidden;
+    text-align: center;
+    text-decoration: none;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    transition: background-color .2s,box-shadow .2s;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
 </style>
 
 <!-- COMPASS -->
 <script type="text/javascript" src="scripts/gl-matrix.min.js"></script>
 <script type="text/javascript" src="scripts/compass.js"></script>
 
-<!-- FEATURE DETECTION -->
-
-<link rel="stylesheet" href="featuredetection/styles/panel.css">
-<script src="featuredetection/modernizr.js"></script>
-<script src="featuredetection/panel.js"></script>
+<script src="scripts/custom-elements.min.js" defer></script>
 
 <link rel="manifest" href="/manifest.json">
 <link rel="serviceworker" href="/sw.js">
 
+<template id="menu-drawer">
+  <style>
+    :host {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      //pointer-events: none;
+    }
+    :host::before {
+      content: '';
+      display: block;
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.4);
+      opacity: 0;
+      will-change: opacity;
+      transition: opacity 0.3s cubic-bezier(0,0,0.3,1);
+    }
+    .container {
+      position: relative;
+      width: 90%;
+      max-width: 400px;
+      background: #FFF;
+      height: 100%;
+      box-shadow: 2px 0 12px rgba(0,0,0,0.4);
+      transform: translateX(-102%);
+      display: flex;
+      flex-direction: column;
+      will-change: transform;
+    }
+    .content {
+      margin: 10px;
+    }
+
+  </style>
+  <div class="container">
+    <div class="content">
+      <slot></slot>
+    </div>
+  </div>
+</template>
+
 <script>
+  customElements.define('menu-drawer', class extends HTMLElement {
+    constructor() {
+      super();
 
-window.addEventListener('load', function() {
-  /* Pretty Print Feature Detection */
-  /* if(window.FeaturePanel) {
-    new FeaturePanel({
-      title: 'Marine Compass',
-      legend: 'A fully web standards compliant JavaScript 3D Compass application.',
-      link: 'https://github.com/richtr/Marine-Compass',
-      features: [
-        {name: 'deviceorientation', title: 'Device Orientation Events', link: 'http://caniuse.com/#feat=deviceorientation'},
-        {name: 'webgl', title: 'WebGL', link: 'http://caniuse.com/#feat=webgl'}
-      ]
-    });
-  }*/
+      const template = document.querySelector('#menu-drawer');
+      const clone = document.importNode(template.content, true);
 
-  /* Compass Web App */
-  var canvasElement = document.getElementById('glCanvas');
-  canvasElement.setAttribute('width', window.innerWidth);
-  canvasElement.setAttribute('height', window.innerHeight);
+      const shadowRoot = this.attachShadow({ mode: 'open' });
+      shadowRoot.appendChild(clone);
 
-  var headingElement = document.getElementById('headingReading');
-  var titleElement = document.getElementById('title');
+      this.onTouchStart = this.onTouchStart.bind(this);
+      this.onTouchMove = this.onTouchMove.bind(this);
+      this.onTouchEnd = this.onTouchEnd.bind(this);
+      this.onTransitionEnd = this.onTransitionEnd.bind(this);
+      this.update = this.update.bind(this);
 
-  new Compass(canvasElement, headingElement, titleElement);
-}, true);
+      this._startX = 0;
+      this._currentX = 0;
+      this._touching = false;
+      this._opened = false;
+    }
+
+    connectedCallback() {
+      this.containerEl = this.shadowRoot.querySelector('.container');
+
+      this.addEventListener('touchstart', this.onTouchStart, { passive: true });
+      this.addEventListener('touchmove', this.onTouchMove, { passive: true });
+      this.addEventListener('touchend', this.onTouchEnd);
+    }
+
+    get opened() {
+      return this._opened;
+    }
+
+    set opened(value) {
+      this.addEventListener('transitionend', this.onTransitionEnd);
+      this._opened = value;
+    }
+
+    onTouchStart(evt) {
+      this._startX = evt.touches[0].pageX;
+      this._currentX = this._startX;
+
+      this._touching = true;
+      requestAnimationFrame(this.update);
+    }
+
+    onTouchMove(evt) {
+      if (!this._touching)
+        return;
+
+      this.currentX = evt.touches[0].pageX;
+    }
+
+    onTouchEnd(evt) {
+      if (!this._touching)
+        return;
+
+      this._touching = false;
+
+      const translateX = Math.min(0, this.currentX - this._startX);
+      this.style.transform = '';
+
+      if (translateX < 0) {
+        this.opened = false;
+      }
+    }
+
+    update() {
+      if (!this._touching)
+        return;
+
+      requestAnimationFrame(this.update);
+
+      const translateX = Math.min(0, this.currentX - this._startX);
+      this.containerEl.style.transform = `translateX(${translateX}px)`;
+    }
+
+    onTransitionEnd (evt) {
+      this.removeEventListener('transitionend', this.onTransitionEnd);
+    }
+  });
+
+  window.addEventListener('load', function() {
+    var canvasElement = document.getElementById('glCanvas');
+    canvasElement.setAttribute('width', window.innerWidth);
+    canvasElement.setAttribute('height', window.innerHeight);
+
+    var headingElement = document.getElementById('headingReading');
+    var titleElement = document.getElementById('title');
+
+    new Compass(canvasElement, headingElement, titleElement);
+  }, true);
 
 </script>
 </head>
 
 <body>
+  <menu-drawer style="z-index: 1">
+    <div style="display: flex; flex-direction: column">
+      <button>Accelerometer</button>
+      <button>Gyroscope</button>
+      <button>Magnetometer</button>
+      <button>Complementary filter (accel + gyro)</button>
+      <button>Kalman filter (accel + gyro)</button>
+    </div>
+  </menu-drawer>
   <div class="heading"><span id="headingReading">-</span>&deg;</div>
   <div class="heading" id="title"></div>
   <canvas id="glCanvas" width="320" height="240"></canvas>
