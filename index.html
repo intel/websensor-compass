@@ -82,13 +82,13 @@
 <template id="menu-drawer">
   <style>
     :host {
+      touch-action: none;
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
       overflow: hidden;
-      //pointer-events: none;
     }
     :host::before {
       content: '';
@@ -115,6 +115,12 @@
       flex-direction: column;
       will-change: transform;
     }
+    .animation {
+      transition: transform 0.33s cubic-bezier(0,0,0.3,1);
+    }
+    .expanded {
+      transform: none;
+    }
     .content {
       margin: 10px;
     }
@@ -128,6 +134,11 @@
 </template>
 
 <script>
+  // Should:
+  // - allow being swiped in from the left
+  // - on touch end, if majority of menu is visible, animate the rest in, else animate out
+  // - allow being swiped out from the right, if open (from the point on it touches)
+  // - click outside, closes menu
   customElements.define('menu-drawer', class extends HTMLElement {
     constructor() {
       super();
@@ -138,6 +149,7 @@
       const shadowRoot = this.attachShadow({ mode: 'open' });
       shadowRoot.appendChild(clone);
 
+      this.determineTouchStart = this.determineTouchStart.bind(this);
       this.onTouchStart = this.onTouchStart.bind(this);
       this.onTouchMove = this.onTouchMove.bind(this);
       this.onTouchEnd = this.onTouchEnd.bind(this);
@@ -153,9 +165,9 @@
     connectedCallback() {
       this.containerEl = this.shadowRoot.querySelector('.container');
 
-      this.addEventListener('touchstart', this.onTouchStart, { passive: true });
-      this.addEventListener('touchmove', this.onTouchMove, { passive: true });
-      this.addEventListener('touchend', this.onTouchEnd);
+      this.addEventListener('pointerdown', this.determineTouchStart, { passive: true });
+      this.addEventListener('pointermove', this.onTouchMove, { passive: true });
+      this.addEventListener('pointerup', this.onTouchEnd);
     }
 
     get opened() {
@@ -163,37 +175,62 @@
     }
 
     set opened(value) {
-      this.addEventListener('transitionend', this.onTransitionEnd);
+      this.containerEl.addEventListener('transitionend', this.onTransitionEnd);
+      this.containerEl.classList.add('animation');
+
       this._opened = value;
+      if (value) {
+        this.containerEl.classList.add('expanded');
+      } else {
+        this.containerEl.classList.remove('expanded');
+      }
+    }
+
+    onTransitionEnd (evt) {
+      this.containerEl.classList.remove('animation');
+      this.containerEl.removeEventListener('transitionend', this.onTransitionEnd);
+    }
+
+    determineTouchStart(evt) {
+      // Allow a few pixels from the left as start region.
+      if (evt.pageX < 20 || this.shadowRoot.elementsFromPoint(evt.pageX, evt.pageY).includes(this.containerEl))
+        this.onTouchStart(evt);
     }
 
     onTouchStart(evt) {
-      this._startX = evt.touches[0].pageX;
+      this._touching = true;
+
+      this._left = this.containerEl.getBoundingClientRect().left;
+
+      this._startX = evt.pageX;
       this._currentX = this._startX;
 
-      this._touching = true;
       requestAnimationFrame(this.update);
     }
 
     onTouchMove(evt) {
-      if (!this._touching)
+      if (!this._touching) {
+        this.determineTouchStart(evt);
         return;
+      }
 
-      this.currentX = evt.touches[0].pageX;
+      this._currentX = evt.pageX;
     }
 
     onTouchEnd(evt) {
-      if (!this._touching)
+      if (!this._touching) {
+        this.opened = false;
         return;
+      }
 
       this._touching = false;
 
-      const translateX = Math.min(0, this.currentX - this._startX);
-      this.style.transform = '';
+      let left = this.containerEl.getBoundingClientRect().left;
+      let width = this.containerEl.clientWidth;
+      let percentageVisible = (left + width) / width
 
-      if (translateX < 0) {
-        this.opened = false;
-      }
+      this.containerEl.style.transform = '';
+      this.opened = percentageVisible >= 0.5;
     }
 
     update() {
@@ -202,12 +239,8 @@
 
       requestAnimationFrame(this.update);
 
-      const translateX = Math.min(0, this.currentX - this._startX);
+      const translateX = Math.min(0, this._currentX - this._startX + this._left);
       this.containerEl.style.transform = `translateX(${translateX}px)`;
-    }
-
-    onTransitionEnd (evt) {
-      this.removeEventListener('transitionend', this.onTransitionEnd);
     }
   });
 
