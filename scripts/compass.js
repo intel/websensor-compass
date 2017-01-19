@@ -86,7 +86,7 @@ if (typeof DOMMatrix == "undefined") {
           args[2], args[3], 0, 0,
           0,       0,       1, 0,
           args[4], args[5], 0, 1
-        ] 
+        ]
         args = nargs;
       }
 
@@ -227,7 +227,7 @@ if (typeof DOMMatrix == "undefined") {
         mat.m41 = mat.m42 = mat.m43 = 0;
         mat.m44 = 1;
       }
- 
+
       return this.multiplySelf(mat);
     }
 
@@ -244,7 +244,7 @@ if (typeof DOMMatrix == "undefined") {
       ]);
     }
   }
-} 
+}
 
 class RotationMatrix extends DOMMatrix {
   constructor(...args) {
@@ -588,7 +588,6 @@ class Euler{
     return context;
   };
 
-  // +++ COMPASS +++
   class Compass {
     constructor(canvasElement, headingElement, titleElement) {
       if (!canvasElement) {
@@ -602,6 +601,14 @@ class Euler{
       this.headingElement = headingElement || document.createElement('div');
       this.titleElement = titleElement;
 
+      let kalmanY = new KalmanFilter();
+      let kalmanX = new KalmanFilter();
+      let kalmanZ = new KalmanFilter();
+
+      this.alpha = 0.0;
+      this.beta = 0.0;
+      this.gamma = 0.0;
+
       this.wGyro = -1;
 
       try {
@@ -612,6 +619,7 @@ class Euler{
           this.gl.viewportWidth = canvasElement.getAttribute('width');
           this.gl.viewportHeight = canvasElement.getAttribute('height');
 
+          this._createViewport();
           this.start();
           this.render();
         }
@@ -621,60 +629,218 @@ class Euler{
       }
     }
 
+    setTitle(value) {
+      this.mCompassRenderer.setCompassFilter(value);
+    }
+
     _processOptions() {
       let params = new URLSearchParams(new URL(window.location.href).search.slice(1));
       let filter = params.get("filter");
 
+      this.sensors = {};
+
       try {
-        this.accel = new Accelerometer({ frequency: 50, includeGravity: true });
-        this.gyros = new Gyroscope({ frequency: 50 });
-        this.magnet = new Magnetometer({ frequency: 50 });
-        this.light = new AmbientLightSensor({ frequency: 50 });
-      } catch (err) {
-        this.output('Unable to initialize sensors: ' + err , 'https://www.w3.org/TR/generic-sensor/');
-        return;
+        this.sensors.Accelerometer = null;
+        this.sensors.Accelerometer = new Accelerometer({ frequency: 50, includeGravity: true });
+      } catch(err) { }
+
+      try {
+        this.sensors.Gyroscope = null;
+        this.sensors.Gyroscope = new Gyroscope({ frequency: 50 });
+      } catch(err) { }
+
+      try {
+        this.sensors.Magnetometer = null;
+        this.sensors.Magnetometer = new Magnetometer({ frequency: 50 });
+      } catch(err) { }
+
+      try {
+        this.sensors.AmbientLightSensor = null;
+        this.sensors.AmbientLightSensor = new AmbientLightSensor({ frequency: 50 });
+      } catch(err) { }
+
+      for (let sensor of Object.values(this.sensors)) {
+        if (!sensor) { continue; }
+        sensor.stop();
+        sensor.onchange = null;
       }
 
-      this.light.start();
       switch (filter) {
+        case "l":
+          this.startAmbientLightDemo();
+          break;
         case "m":
-          this.filter = "Magnetometer";
-          this.driver = this.magnet;
-          this.accel.start();
-          this.magnet.start();
+          this.startMagnetometerDemo();
           break;
         case "k":
-          this.wGyro = -1;
-          this.filter = "Kalman";
-          this.driver = this.gyros;
-          this.accel.start();
-          this.gyros.start();
+          this.startGyroscopeDemo(0);
           break;
         case "a":
         case "0":
-          this.wGyro = 0;
-          this.filter = "Accelerometer";
-          this.driver = this.accel;
-          this.accel.start();
+          this.startAccelerometerDemo();
           break;
         case "g":
         case "1":
-          this.wGyro = 1;
-          this.filter = "Gyroscope";
-          this.driver = this.gyros;
-          this.gyros.start();
+          this.startGyroscopeDemo(1);
           break;
         case "c":
         default:
           let num = parseFloat(filter);
           if (Number.isNaN(num))
             num = 0.98;
-          this.wGyro = Math.min(1, Math.max(0, num))
-          this.filter = `Complementary (${this.wGyro})`;
-          this.driver = this.gyros;
-          this.accel.start();
-          this.gyros.start();
+          let weight = Math.min(1, Math.max(0, num));
+          this.startGyroscopeDemo(weight);
       }
+    }
+
+    _startSensors(...requiredSensors) {
+      for (let sensor of requiredSensors) {
+        if (!this.sensors[sensor]) {
+          return false;
+        }
+      }
+      for (let sensor of requiredSensors) {
+        this.sensors[sensor].start();
+      }
+      return true;
+    }
+
+    startAmbientLightDemo() {
+      this.setTitle("Ambient Light");
+      if (!this._startSensors("AmbientLightSensor")) {
+        this.output('Ambient light demo requires an ambient light sensor');
+        return false;
+      }
+
+      let canvas = document.querySelector("canvas");
+
+      function remap(value, inRangeStart, inRangeEnd, outRangeStart, outRangeEnd) {
+        return outRangeStart + (outRangeEnd - outRangeStart) * ((value - inRangeStart) / (inRangeEnd - inRangeStart));
+      };
+
+      this.sensors.AmbientLightSensor.onchange = event => {
+        let value = Math.min(Math.max(remap(this.sensors.AmbientLightSensor.reading.illuminance, 0, 100, 0, 100), 0), 100);
+        canvas.style = `filter: grayscale(${value}%)`;
+      }
+
+      return true;
+    }
+
+    startAccelerometerDemo() {
+      this.setTitle("Accelerometer");
+      if (!this._startSensors("Accelerometer")) {
+        this.output('Accelerometer demo requires an accelerometer sensor');
+        return false;
+      }
+
+      this.sensors.Accelerometer.onchange = event => {
+        let xAccel = this.sensors.Accelerometer.reading.y / 9.81;
+        let yAccel = this.sensors.Accelerometer.reading.x / 9.81;
+        let zAccel = this.sensors.Accelerometer.reading.z / 9.81;
+
+        let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
+        this.beta = (xAccel / norm) * 180 / 2;
+        this.gamma = (yAccel / norm) * -180 / 2;
+        this.alpha = (zAccel / norm);
+      };
+
+      return true;
+    }
+
+    start() {
+      this._processOptions();
+    }
+
+    startGyroscopeDemo(weight = 1) {
+      if (weight == 1) {
+        this.setTitle("Gyroscope");
+        if (!this._startSensors("Gyroscope")) {
+          this.output('The Gyroscope demo requires a gyroscope sensor');
+          return false;
+        }
+      }
+
+      else if (weight <= 0) {
+        this.setTitle("Kalman filter");
+        if (!this._startSensors("Gyroscope", "Accelerometer")) {
+          this.output('The Kalman filter demo requires both gyroscope and accelerometer sensors');
+          return false;
+        }
+      }
+
+      else if (weight > 0 && weight < 1) {
+        this.setTitle(`Complementary (${weight}) filter`);
+        if (!this._startSensors("Gyroscope", "Accelerometer")) {
+          this.output('The complementary filter demo requires both gyroscope and accelerometer sensors');
+          return false;
+        }
+      }
+
+      else {
+        throw new Error;
+      }
+
+      this.sensors.Gyroscope.onchange = event => {
+        let xAccel = 0;
+        let yAccel = 0;
+        let zAccel = 0;
+
+        if (weight != 1) {
+          xAccel = this.sensors.Accelerometer.reading.y / 9.81;
+          yAccel = this.sensors.Accelerometer.reading.x / 9.81;
+          zAccel = this.sensors.Accelerometer.reading.z / 9.81;
+
+          let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
+          xAccel = (xAccel / norm) * 90;
+          yAccel = (yAccel / norm) * -90;
+          zAccel = (zAccel / norm);
+        }
+
+        let xGyro = this.sensors.Gyroscope.reading.x * 180 / Math.PI;
+        let yGyro = this.sensors.Gyroscope.reading.y * 180 / Math.PI;
+        let zGyro = this.sensors.Gyroscope.reading.z * 180 / Math.PI;
+
+        let dt = 0;
+        if (this.timestamp) {
+          dt = (this.sensors.Gyroscope.reading.timeStamp - this.timestamp) / 1000;
+        }
+        this.timestamp = this.sensors.Gyroscope.reading.timeStamp;
+
+        // Kalmar filter
+        if (weight <= 0) {
+          this.alpha = kalmanZ.filter(zAccel, zGyro, dt);
+          this.beta = kalmanX.filter(xAccel, xGyro, dt);
+          this.gamma = kalmanY.filter(yAccel, yGyro, dt);
+        }
+
+        // Complementary filter
+        else {
+          // E.g.: Current angle = 98% * (current angle + gyro rotation rate) + (2% * Accelerometer angle)
+          this.alpha = weight * (this.alpha + zGyro * dt) + (1.0 - weight) * zAccel;
+          this.beta = weight * (this.beta + xGyro * dt) + (1.0 - weight) * xAccel;
+          this.gamma = weight * (this.gamma + yGyro * dt) + (1.0 - weight) * yAccel;
+        }
+      };
+
+      return true;
+    }
+
+    startMagnetometerDemo() {
+      this.setTitle("Magnetometer");
+      if (!this._startSensors("Magnetometer")) {
+        this.output('Magnetometer demo requires a magnetometer sensor');
+        return false;
+      }
+
+      this.sensors.Magnetometer.onchange = event => {
+        if (this.driver != this.sensors.Magnetometer)
+          return;
+
+        let rotationMatrix = RotationMatrix.fromSensorData(this.sensors.Accelerometer.reading, this.sensors.Magnetometer.reading);
+        let euler = Euler.fromRotationMatrix(rotationMatrix);
+
+        this.alpha = euler.alpha;
+      };
     }
 
     _createViewport() {
@@ -706,7 +872,6 @@ class Euler{
 
       // CompassRenderer manages 3D objects and gl surface life cycle
       this.mCompassRenderer = new CompassRenderer(this);
-      this.mCompassRenderer.setCompassFilter(this.filter);
 
       // Catch window resize event
       window.addEventListener('orientationchange', _ => {
@@ -729,100 +894,6 @@ class Euler{
 
       this.gl.clearDepth(500);
       this.gl.viewport(0, 0, this.gl.viewportWidth, this.gl.viewportHeight);
-    }
-
-    start() {
-      this._processOptions();
-      this._createViewport();
-
-      let kalmanY = new KalmanFilter();
-      let kalmanX = new KalmanFilter();
-      let kalmanZ = new KalmanFilter();
-
-      this.alpha = 0.0;
-      this.beta = 0.0;
-      this.gamma = 0.0;
-
-      let canvas = document.querySelector("canvas");
-
-      function remap(value, inRangeStart, inRangeEnd, outRangeStart, outRangeEnd) {
-        return outRangeStart + (outRangeEnd - outRangeStart) * ((value - inRangeStart) / (inRangeEnd - inRangeStart));
-      };
-
-      this.light.onchange = event => {
-        let value = Math.min(Math.max(remap(this.light.reading.illuminance, 0, 100, 0, 100), 0), 100);
-        canvas.style = `filter: grayscale(${value}%)`;
-        console.log(`filter: grayscale(${value}%)`);
-      }
-
-      this.accel.onchange = event => {
-        if (this.driver != this.accel)
-          return;
-
-        let xAccel = this.accel.reading.y / 9.81;
-        let yAccel = this.accel.reading.x / 9.81;
-        let zAccel = this.accel.reading.z / 9.81;
-
-        let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
-        this.beta = (xAccel / norm) * 180 / 2;
-        this.gamma = (yAccel / norm) * -180 / 2;
-        this.alpha = (zAccel / norm);
-      };
-
-      this.gyros.onchange = event => {
-        if (this.driver != this.gyros)
-          return;
-
-        let xAccel = 0;
-        let yAccel = 0;
-        let zAccel = 0;
-
-        if (this.wGyro != 1) {
-          xAccel = this.accel.reading.y / 9.81;
-          yAccel = this.accel.reading.x / 9.81;
-          zAccel = this.accel.reading.z / 9.81;
-
-          let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
-          xAccel = (xAccel / norm) * 90;
-          yAccel = (yAccel / norm) * -90;
-          zAccel = (zAccel / norm);
-        }
-
-        let xGyro = this.gyros.reading.x * 180 / Math.PI;
-        let yGyro = this.gyros.reading.y * 180 / Math.PI;
-        let zGyro = this.gyros.reading.z * 180 / Math.PI;
-
-        let dt = 0;
-        if (this.timestamp) {
-          dt = (this.gyros.reading.timeStamp - this.timestamp) / 1000;
-        }
-        this.timestamp = this.gyros.reading.timeStamp;
-
-        // Kalmar filter
-        if (this.wGyro < 0) {
-          this.alpha = kalmanZ.filter(zAccel, zGyro, dt);
-          this.beta = kalmanX.filter(xAccel, xGyro, dt);
-          this.gamma = kalmanY.filter(yAccel, yGyro, dt);
-        }
-
-        // Complementary filter
-        else {
-          // E.g.: Current angle = 98% * (current angle + gyro rotation rate) + (2% * Accelerometer angle)
-          this.alpha = this.wGyro * (this.alpha + zGyro * dt) + (1.0 - this.wGyro) * zAccel;
-          this.beta = this.wGyro * (this.beta + xGyro * dt) + (1.0 - this.wGyro) * xAccel;
-          this.gamma = this.wGyro * (this.gamma + yGyro * dt) + (1.0 - this.wGyro) * yAccel;
-        }
-      };
-
-      this.magnet.onchange = event => {
-        if (this.driver != this.magnet)
-          return;
-
-        let rotationMatrix = RotationMatrix.fromSensorData(this.accel.reading, this.magnet.reading);
-        let euler = Euler.fromRotationMatrix(rotationMatrix);
-
-        this.alpha = euler.alpha;
-      };
     }
 
     output(str, link) {
