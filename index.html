@@ -139,6 +139,7 @@
   // - on touch end, if majority of menu is visible, animate the rest in, else animate out
   // - allow being swiped out from the right, if open (from the point on it touches)
   // - click outside, closes menu
+  // - inertia should close and open depending on direction (so-called fling)
   customElements.define('menu-drawer', class extends HTMLElement {
     constructor() {
       super();
@@ -158,6 +159,7 @@
 
       this._startX = 0;
       this._currentX = 0;
+      this._dX = 0;
       this._touching = false;
       this._opened = false;
     }
@@ -214,6 +216,7 @@
         return;
       }
 
+      this._dX = evt.pageX - this._currentX;
       this._currentX = evt.pageX;
     }
 
@@ -225,12 +228,22 @@
 
       this._touching = false;
 
-      let left = this.containerEl.getBoundingClientRect().left;
-      let width = this.containerEl.clientWidth;
-      let percentageVisible = (left + width) / width
+      let endOpenedState;
+
+      // Check for fling.
+      if (Math.abs(this._dX) > 10) {
+        endOpenedState = this._dX > 0;
+      }
+      // Check depending on percentage visible.
+      else {
+        let left = this.containerEl.getBoundingClientRect().left;
+        let width = this.containerEl.clientWidth;
+        let percentageVisible = (left + width) / width
+        endOpenedState = percentageVisible >= 0.5;
+      }
 
       this.containerEl.style.transform = '';
-      this.opened = percentageVisible >= 0.5;
+      this.opened = endOpenedState;
     }
 
     update() {
