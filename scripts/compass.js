@@ -606,13 +606,35 @@ class Euler{
       this.canvasEl.setAttribute('width', window.innerWidth);
       this.canvasEl.setAttribute('height', window.innerHeight);
 
-      let kalmanY = new KalmanFilter();
-      let kalmanX = new KalmanFilter();
-      let kalmanZ = new KalmanFilter();
+      this.kalmanY = new KalmanFilter();
+      this.kalmanX = new KalmanFilter();
+      this.kalmanZ = new KalmanFilter();
 
       this.alpha = 0.0;
       this.beta = 0.0;
       this.gamma = 0.0;
+
+      this.sensors = {};
+
+      try {
+        this.sensors.Accelerometer = null;
+        this.sensors.Accelerometer = new Accelerometer({ frequency: 50, includeGravity: true });
+      } catch(err) { }
+
+      try {
+        this.sensors.Gyroscope = null;
+        this.sensors.Gyroscope = new Gyroscope({ frequency: 50 });
+      } catch(err) { }
+
+      try {
+        this.sensors.Magnetometer = null;
+        this.sensors.Magnetometer = new Magnetometer({ frequency: 50 });
+      } catch(err) { }
+
+      try {
+        this.sensors.AmbientLightSensor = null;
+        this.sensors.AmbientLightSensor = new AmbientLightSensor({ frequency: 50 });
+      } catch(err) { }
 
       try {
         this.gl = create3DContext(this.canvasEl);
@@ -640,37 +662,19 @@ class Euler{
       let params = new URLSearchParams(new URL(window.location.href).search.slice(1));
       let filter = params.get("filter");
 
-      this.sensors = {};
-
-      try {
-        this.sensors.Accelerometer = null;
-        this.sensors.Accelerometer = new Accelerometer({ frequency: 50, includeGravity: true });
-      } catch(err) { }
-
-      try {
-        this.sensors.Gyroscope = null;
-        this.sensors.Gyroscope = new Gyroscope({ frequency: 50 });
-      } catch(err) { }
-
-      try {
-        this.sensors.Magnetometer = null;
-        this.sensors.Magnetometer = new Magnetometer({ frequency: 50 });
-      } catch(err) { }
-
-      try {
-        this.sensors.AmbientLightSensor = null;
-        this.sensors.AmbientLightSensor = new AmbientLightSensor({ frequency: 50 });
-      } catch(err) { }
-
       for (let sensor of Object.values(this.sensors)) {
-        if (!sensor) { continue; } 
-        
-        if (sensor.state != "idle" || sensor.state != "errored") {
-          sensor.stop();
-        }
-
+        if (!sensor) { continue; }
         sensor.onchange = null;
+
+        // Not working properly:
+        // if (sensor.state == "activating" || sensor.state == "active") {
+        //   sensor.stop();
+        // }
       }
+
+      this.alpha = 0.0;
+      this.beta = 0.0;
+      this.gamma = 0.0;
 
       switch (filter) {
         case "l":
@@ -707,7 +711,9 @@ class Euler{
         }
       }
       for (let sensor of requiredSensors) {
-        this.sensors[sensor].start();
+        if (this.sensors[sensor].state == "idle") {
+          this.sensors[sensor].start();
+        }
       }
       return true;
     }
@@ -719,15 +725,13 @@ class Euler{
         return false;
       }
 
-      let canvas = document.querySelector("canvas");
-
       function remap(value, inRangeStart, inRangeEnd, outRangeStart, outRangeEnd) {
         return outRangeStart + (outRangeEnd - outRangeStart) * ((value - inRangeStart) / (inRangeEnd - inRangeStart));
       };
 
       this.sensors.AmbientLightSensor.onchange = event => {
         let value = Math.min(Math.max(remap(this.sensors.AmbientLightSensor.reading.illuminance, 0, 100, 0, 100), 0), 100);
-        canvas.style = `filter: grayscale(${value}%)`;
+        this.canvasEl.style = `filter: grayscale(${value}%)`;
       }
 
       return true;
@@ -815,9 +819,9 @@ class Euler{
 
         // Kalmar filter
         if (weight <= 0) {
-          this.alpha = kalmanZ.filter(zAccel, zGyro, dt);
-          this.beta = kalmanX.filter(xAccel, xGyro, dt);
-          this.gamma = kalmanY.filter(yAccel, yGyro, dt);
+          this.alpha = this.kalmanZ.filter(zAccel, zGyro, dt);
+          this.beta = this.kalmanX.filter(xAccel, xGyro, dt);
+          this.gamma = this.kalmanY.filter(yAccel, yGyro, dt);
         }
 
         // Complementary filter
@@ -834,15 +838,12 @@ class Euler{
 
     startMagnetometerDemo() {
       this.setTitle("Magnetometer");
-      if (!this._startSensors("Magnetometer")) {
-        console.error('Magnetometer demo requires a magnetometer sensor');
+      if (!this._startSensors("Magnetometer", "Accelerometer")) {
+        console.error('Magnetometer demo requires magnetometer and accelerometer sensors');
         return false;
       }
 
       this.sensors.Magnetometer.onchange = event => {
-        if (this.driver != this.sensors.Magnetometer)
-          return;
-
         let rotationMatrix = RotationMatrix.fromSensorData(this.sensors.Accelerometer.reading, this.sensors.Magnetometer.reading);
         let euler = Euler.fromRotationMatrix(rotationMatrix);
 

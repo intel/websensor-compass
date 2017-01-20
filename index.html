@@ -133,8 +133,31 @@
     .content {
       margin: 10px;
     }
-
+    button {
+      position: fixed;
+      padding: 8px;
+      margin: 6px 8px 6px 8px;
+      color: #039be5;
+      background-color: transparent;
+      border: 0;
+      border-radius: 2px;
+      box-shadow: none;
+      cursor: pointer;
+      display: inline-block;
+      height: 40px;
+      width: 40px;
+      outline: 0;
+      transition: background-color .2s, box-shadow .2s;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
   </style>
+  <button id="menu-button">
+      <svg fill="#000000" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0 0h24v24H0z" fill="none"/>
+        <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+      </svg>
+  </button>
   <div class="container">
     <div class="content">
       <slot></slot>
@@ -208,7 +231,7 @@
         el.appendChild(document.createTextNode(message + "."));
         this.shadowRoot.appendChild(el);
 
-        error.call(console, message, ...rest); 
+        error.call(console, message, ...rest);
       }
 
       let log = console.log;
@@ -218,9 +241,8 @@
         el.appendChild(document.createTextNode(message + "."));
         this.shadowRoot.appendChild(el);
 
-        log.call(console, message, ...rest); 
+        log.call(console, message, ...rest);
       }
-
     }
   });
 
@@ -257,7 +279,9 @@
 
     connectedCallback() {
       this.containerEl = this.shadowRoot.querySelector('.container');
+      this.menuBtn = this.shadowRoot.querySelector('#menu-button');
 
+      this.menuBtn.addEventListener('click', _ => this.opened = true);
       this.addEventListener('pointerdown', this.determineTouchStart, { passive: true });
       this.addEventListener('pointermove', this.onTouchMove, { passive: true });
       this.addEventListener('pointerup', this.onTouchEnd);
