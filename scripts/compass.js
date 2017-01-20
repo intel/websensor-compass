@@ -588,18 +588,23 @@ class Euler{
     return context;
   };
 
-  class Compass {
-    constructor(canvasElement, headingElement, titleElement) {
-      if (!canvasElement) {
-        canvasElement = document.createElement('canvas');
-        canvasElement.setAttribute('width', window.innerWidth);
-        canvasElement.setAttribute('height', window.innerHeight);
-        document.body.appendChild(canvasElement);
-      }
 
-      this.canvasElement = canvasElement;
-      this.headingElement = headingElement || document.createElement('div');
-      this.titleElement = titleElement;
+  customElements.define('sensor-compass', class extends HTMLElement {
+    constructor() {
+      super();
+
+      const template = document.querySelector('#sensor-compass');
+      const clone = document.importNode(template.content, true);
+
+      const shadowRoot = this.attachShadow({ mode: 'open' });
+      shadowRoot.appendChild(clone);
+
+      this.canvasEl = shadowRoot.querySelector('#glCanvas');
+      this.headingEl = shadowRoot.querySelector('#headingReading');
+      this.titleEl = shadowRoot.querySelector('#title');
+
+      this.canvasEl.setAttribute('width', window.innerWidth);
+      this.canvasEl.setAttribute('height', window.innerHeight);
 
       let kalmanY = new KalmanFilter();
       let kalmanX = new KalmanFilter();
@@ -609,15 +614,13 @@ class Euler{
       this.beta = 0.0;
       this.gamma = 0.0;
 
-      this.wGyro = -1;
-
       try {
-        this.gl = create3DContext(canvasElement);
+        this.gl = create3DContext(this.canvasEl);
         if (!this.gl) {
-          this.output('Unable to initialize WebGL. Your browser may not support it', 'http://get.webgl.org');
+          console.error('Unable to initialize WebGL. Your browser may not support it', 'http://get.webgl.org');
         } else {
-          this.gl.viewportWidth = canvasElement.getAttribute('width');
-          this.gl.viewportHeight = canvasElement.getAttribute('height');
+          this.gl.viewportWidth = this.canvasEl.getAttribute('width');
+          this.gl.viewportHeight = this.canvasEl.getAttribute('height');
 
           this._createViewport();
           this.start();
@@ -625,7 +628,7 @@ class Euler{
         }
       }
       catch(e) {
-        this.output(e);
+        console.error(e);
       }
     }
 
@@ -633,7 +636,7 @@ class Euler{
       this.mCompassRenderer.setCompassFilter(value);
     }
 
-    _processOptions() {
+    onRouteChanged() {
       let params = new URLSearchParams(new URL(window.location.href).search.slice(1));
       let filter = params.get("filter");
 
@@ -660,8 +663,12 @@ class Euler{
       } catch(err) { }
 
       for (let sensor of Object.values(this.sensors)) {
-        if (!sensor) { continue; }
-        sensor.stop();
+        if (!sensor) { continue; } 
+        
+        if (sensor.state != "idle" || sensor.state != "errored") {
+          sensor.stop();
+        }
+
         sensor.onchange = null;
       }
 
@@ -708,7 +715,7 @@ class Euler{
     startAmbientLightDemo() {
       this.setTitle("Ambient Light");
       if (!this._startSensors("AmbientLightSensor")) {
-        this.output('Ambient light demo requires an ambient light sensor');
+        console.error('Ambient light demo requires an ambient light sensor');
         return false;
       }
 
@@ -729,7 +736,7 @@ class Euler{
     startAccelerometerDemo() {
       this.setTitle("Accelerometer");
       if (!this._startSensors("Accelerometer")) {
-        this.output('Accelerometer demo requires an accelerometer sensor');
+        console.error('Accelerometer demo requires an accelerometer sensor');
         return false;
       }
 
@@ -748,14 +755,14 @@ class Euler{
     }
 
     start() {
-      this._processOptions();
+      this.onRouteChanged();
     }
 
     startGyroscopeDemo(weight = 1) {
       if (weight == 1) {
         this.setTitle("Gyroscope");
         if (!this._startSensors("Gyroscope")) {
-          this.output('The Gyroscope demo requires a gyroscope sensor');
+          console.error('The Gyroscope demo requires a gyroscope sensor');
           return false;
         }
       }
@@ -763,7 +770,7 @@ class Euler{
       else if (weight <= 0) {
         this.setTitle("Kalman filter");
         if (!this._startSensors("Gyroscope", "Accelerometer")) {
-          this.output('The Kalman filter demo requires both gyroscope and accelerometer sensors');
+          console.error('The Kalman filter demo requires both gyroscope and accelerometer sensors');
           return false;
         }
       }
@@ -771,7 +778,7 @@ class Euler{
       else if (weight > 0 && weight < 1) {
         this.setTitle(`Complementary (${weight}) filter`);
         if (!this._startSensors("Gyroscope", "Accelerometer")) {
-          this.output('The complementary filter demo requires both gyroscope and accelerometer sensors');
+          console.error('The complementary filter demo requires both gyroscope and accelerometer sensors');
           return false;
         }
       }
@@ -828,7 +835,7 @@ class Euler{
     startMagnetometerDemo() {
       this.setTitle("Magnetometer");
       if (!this._startSensors("Magnetometer")) {
-        this.output('Magnetometer demo requires a magnetometer sensor');
+        console.error('Magnetometer demo requires a magnetometer sensor');
         return false;
       }
 
@@ -876,8 +883,8 @@ class Euler{
       // Catch window resize event
       window.addEventListener('orientationchange', _ => {
         window.setTimeout(() => {
-          this.gl.viewportWidth = this.canvasElement.width = window.innerWidth;
-          this.gl.viewportHeight = this.canvasElement.height = window.innerHeight;
+          this.gl.viewportWidth = this.canvasEl.width = window.innerWidth;
+          this.gl.viewportHeight = this.canvasEl.height = window.innerHeight;
 
           // Rescale webgl viewport
           this.gl.viewport(0, 0, this.gl.viewportWidth, this.gl.viewportHeight);
@@ -896,29 +903,11 @@ class Euler{
       this.gl.viewport(0, 0, this.gl.viewportWidth, this.gl.viewportHeight);
     }
 
-    output(str, link) {
-      console.error(str);
-
-      // Display error to user
-      var outputContainer = document.createElement('div');
-      outputContainer.setAttribute('class', 'output_err');
-      outputContainer.appendChild(document.createTextNode(str + ". "));
-
-      if (link) {
-        var output_link = document.createElement('a');
-        output_link.href = link;
-        output_link.textContent = link;
-        outputContainer.appendChild(output_link);
-      }
-
-      document.body.appendChild(outputContainer);
-    }
-
     checkGLError() {
       var error = this.gl.getError();
       if (error != this.gl.NO_ERROR && error != this.gl.CONTEXT_LOST_WEBGL) {
         var str = "GL Error: " + error;
-        this.output(str);
+        console.error(str);
         throw str;
       }
     }
@@ -957,9 +946,7 @@ class Euler{
       // see: http://stackoverflow.com/questions/6065169/requestanimationframe-with-this-keyword
       window.requestAnimationFrame(this.render.bind(this));
     }
-  };
-
-  window.Compass = Compass;
+  });
 
   // +++ COMPASSRENDERER +++
   class CompassRenderer {
@@ -989,7 +976,7 @@ class Euler{
       if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS) &&
         !this.gl.isContextLost()) {
           var infoLog = this.gl.getShaderInfoLog(shader);
-          this.compass.output("Error compiling shader:\n" + infoLog);
+          console.error("Error compiling shader:\n" + infoLog);
           this.gl.deleteShader(shader);
           return null;
       }
@@ -1011,7 +998,7 @@ class Euler{
       var linked = this.gl.getProgramParameter(this.shaderProgram, this.gl.LINK_STATUS);
       if (!linked && !this.gl.isContextLost()) {
         var infoLog = this.gl.getProgramInfoLog(this.shaderProgram);
-        this.compass.output("Error linking program:\n" + infoLog);
+        console.error("Error linking program:\n" + infoLog);
         this.gl.deleteProgram(this.shaderProgram);
         return;
       }
@@ -1069,9 +1056,9 @@ class Euler{
       var thisCompassHeading = this.heading;
       if (this.lastCompassHeading !== thisCompassHeading) {
         this.lastCompassHeading = thisCompassHeading;
-        this.compass.headingElement.textContent = this.lastCompassHeading;
+        this.compass.headingEl.textContent = this.lastCompassHeading;
       }
-      this.compass.titleElement.textContent = this.filter;
+      this.compass.titleEl.textContent = this.filter;
 
       this.mTurntable.draw();
     }

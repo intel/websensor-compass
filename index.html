@@ -22,11 +22,6 @@
     background-size: 100% 100%;
     font-family: Arial, Helvetica, sans-serif;
   }
-  #glCanvas {
-    position: absolute;
-    pointer-events: none;
-    top: 0;
-  }
   .output_err {
     display: block;
     background-color: #fff;
@@ -35,15 +30,6 @@
     border: 1px solid #000;
     margin: 20px 10px;
     padding: 20px;
-  }
-  .heading {
-    display: block;
-    text-align: center;
-    padding: 10px 0 0;
-    height: 40px;
-    color: #fff;
-    font-size: 1.8em;
-    font-weight: normal;
   }
   button {
     padding: 8px;
@@ -70,7 +56,6 @@
   }
 </style>
 
-<!-- COMPASS -->
 <script type="text/javascript" src="scripts/gl-matrix.min.js"></script>
 <script type="text/javascript" src="scripts/compass.js"></script>
 
@@ -78,6 +63,30 @@
 
 <link rel="manifest" href="/manifest.json">
 <link rel="serviceworker" href="/sw.js">
+
+<template id="sensor-compass">
+  <style>
+  .heading {
+    display: block;
+    text-align: center;
+    padding: 10px 0 0;
+    height: 40px;
+    color: #fff;
+    font-size: 1.8em;
+    font-weight: normal;
+  }
+  #glCanvas {
+    position: absolute;
+    pointer-events: none;
+    top: 0;
+  }
+  </style>
+  <div class="heading">
+    <span id="headingReading">-</span>&deg;
+  </div>
+  <div class="heading" id="title"></div>
+  <canvas id="glCanvas" width="320" height="240"></canvas>
+</template>
 
 <template id="menu-drawer">
   <style>
@@ -133,7 +142,89 @@
   </div>
 </template>
 
+<template id="error-console">
+  <style>
+    .messages {
+      flex: 1 1;
+      overflow-y: scroll;
+      word-wrap: break-word;
+      -webkit-user-select: text;
+      border-top: 1px solid rgb(230, 230, 230);
+      -webkit-transform: translateZ(0);
+    }
+    .consoleLine {
+      padding: 1px 22px 1px 24px;
+      border-top: 1px solid rgb(230, 230, 230);
+      min-height: 20px;
+      line-height: 20px;
+      flex: auto;
+      font-family: monospace;
+      font-size: 8pt;
+    }
+    .consoleLine:first-of-type {
+      border-top: none !important;
+    }
+    .consoleLine .consoleColor {
+      width: 20px;
+      height: 20px;
+    }
+    .error:last-child {
+      border-bottom: 1px solid #ffd7d7;
+    }
+    .log:last-child {
+      border-bottom: 1px solid rgb(230, 230, 230);
+    }
+    .error + :not(.error) {
+      border-top: 1px solid #ffd7d7;
+    }
+    .error {
+      background-color: #fff0f0;
+      border-top: 1px solid #ffd7d7 !important;
+      color: red !important;
+    }
+    .log {
+      background-color: white;
+    }
+  </style>
+  <div class="messages">
+  </div>
+</template>
+
 <script>
+  customElements.define('error-console', class extends HTMLElement {
+    constructor() {
+      super();
+
+      const template = document.querySelector('#error-console');
+      const clone = document.importNode(template.content, true);
+
+      const shadowRoot = this.attachShadow({ mode: 'open' });
+      shadowRoot.appendChild(clone);
+
+      let error = console.error;
+      console.error = (message, ...rest) => {
+        let el = document.createElement('div');
+        el.setAttribute('class', 'consoleLine error');
+        el.appendChild(document.createTextNode(message + "."));
+        this.shadowRoot.appendChild(el);
+
+        error.call(console, message, ...rest); 
+      }
+
+      let log = console.log;
+      console.log = (message, ...rest) => {
+        let el = document.createElement('div');
+        el.setAttribute('class', 'consoleLine log');
+        el.appendChild(document.createTextNode(message + "."));
+        this.shadowRoot.appendChild(el);
+
+        log.call(console, message, ...rest); 
+      }
+
+    }
+  });
+
+
   // Should:
   // - allow being swiped in from the left
   // - on touch end, if majority of menu is visible, animate the rest in, else animate out
@@ -257,34 +348,27 @@
     }
   });
 
-  window.addEventListener('load', function() {
-    var canvasElement = document.getElementById('glCanvas');
-    canvasElement.setAttribute('width', window.innerWidth);
-    canvasElement.setAttribute('height', window.innerHeight);
-
-    var headingElement = document.getElementById('headingReading');
-    var titleElement = document.getElementById('title');
-
-    new Compass(canvasElement, headingElement, titleElement);
-  }, true);
-
+  function changeRoute(route) {
+    window.history.replaceState({}, '', `?filter=${route}`);
+    document.querySelector('sensor-compass').onRouteChanged();
+    document.querySelector('menu-drawer').opened = false;
+  }
 </script>
 </head>
 
 <body>
   <menu-drawer style="z-index: 1">
     <div style="display: flex; flex-direction: column">
-      <button>Ambient Light</button>
-      <button>Accelerometer</button>
-      <button>Gyroscope</button>
-      <button>Magnetometer (magnet + accel)</button>
-      <button>Complementary filter (accel + gyro)</button>
-      <button>Kalman filter (accel + gyro)</button>
+      <button onclick="changeRoute('l')">Ambient Light</button>
+      <button onclick="changeRoute('a')">Accelerometer</button>
+      <button onclick="changeRoute('g')">Gyroscope</button>
+      <button onclick="changeRoute('m')">Magnetometer (magnet + accel)</button>
+      <button onclick="changeRoute('c')">Complementary filter (accel + gyro)</button>
+      <button onclick="changeRoute('k')">Kalman filter (accel + gyro)</button>
     </div>
   </menu-drawer>
-  <div class="heading"><span id="headingReading">-</span>&deg;</div>
-  <div class="heading" id="title"></div>
-  <canvas id="glCanvas" width="320" height="240"></canvas>
+  <error-console></error-console>
+  <sensor-compass></sensor-compass>
 </body>
 
 </html>
