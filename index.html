@@ -263,16 +263,14 @@
       const shadowRoot = this.attachShadow({ mode: 'open' });
       shadowRoot.appendChild(clone);
 
-      this.determineTouchStart = this.determineTouchStart.bind(this);
-      this.onTouchStart = this.onTouchStart.bind(this);
-      this.onTouchMove = this.onTouchMove.bind(this);
+      this.onGestureStart = this.onGestureStart.bind(this);
+      this.onGestureMove = this.onGestureMove.bind(this);
       this.onTouchEnd = this.onTouchEnd.bind(this);
       this.onTransitionEnd = this.onTransitionEnd.bind(this);
       this.update = this.update.bind(this);
 
       this._startX = 0;
       this._currentX = 0;
-      this._dX = 0;
       this._touching = false;
       this._opened = false;
     }
@@ -282,8 +280,8 @@
       this.menuBtn = this.shadowRoot.querySelector('#menu-button');
 
       this.menuBtn.addEventListener('click', _ => this.opened = true);
-      this.addEventListener('pointerdown', this.determineTouchStart, { passive: true });
-      this.addEventListener('pointermove', this.onTouchMove, { passive: true });
+      this.addEventListener('pointerdown', this.onGestureStart, { passive: true });
+      this.addEventListener('pointermove', this.onGestureMove, { passive: true });
       this.addEventListener('pointerup', this.onTouchEnd);
     }
 
@@ -308,31 +306,57 @@
       this.containerEl.removeEventListener('transitionend', this.onTransitionEnd);
     }
 
-    determineTouchStart(evt) {
-      // Allow a few pixels from the left as start region.
-      if (evt.pageX < 20 || this.shadowRoot.elementsFromPoint(evt.pageX, evt.pageY).includes(this.containerEl))
-        this.onTouchStart(evt);
+    isWithinHitRegion(x, y) {
+      return x < 20 || this.shadowRoot.elementsFromPoint(x, y).includes(this.containerEl);
     }
 
-    onTouchStart(evt) {
+    addVelocitySample(dDist, dTime) {
+      if (dTime === 0) return;
+
+      const velocitySample = dDist / dTime;
+
+      // Low pass filter.
+      const alpha = 0.75;
+      this._velocity *= alpha;
+      this._velocity += (1 - alpha) * velocitySample;
+    }
+
+    onGestureStart(evt) {
+      if (!this.isWithinHitRegion(evt.pageX, evt.pageY)) {
+        return;
+      }
+
+      if (window.PointerEvent) {
+        evt.target.setPointerCapture(evt.pointerId);
+      }
+
       this._touching = true;
 
       this._left = this.containerEl.getBoundingClientRect().left;
 
       this._startX = evt.pageX;
       this._currentX = this._startX;
+      this._timestamp = new Date().getTime();
+      this._velocity = 0;
 
       requestAnimationFrame(this.update);
     }
 
-    onTouchMove(evt) {
+    onGestureMove(evt) {
       if (!this._touching) {
-        this.determineTouchStart(evt);
         return;
       }
 
-      this._dX = evt.pageX - this._currentX;
+      const lastTimestamp = this._timestamp;
+      this._timestamp = new Date().getTime();
+      const dTime = this._timestamp - lastTimestamp;
+
+      const lastX = this._currentX;
       this._currentX = evt.pageX;
+
+      const dX = this._currentX - lastX;
+
+      this.addVelocitySample(dX, dTime);
     }
 
     onTouchEnd(evt) {
@@ -346,8 +370,8 @@
       let endOpenedState;
 
       // Check for fling.
-      if (Math.abs(this._dX) > 10) {
-        endOpenedState = this._dX > 0;
+      if (Math.abs(this._velocity) > 1) {
+        endOpenedState = this._velocity > 0;
       }
       // Check depending on percentage visible.
       else {
