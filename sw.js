@@ -2,6 +2,11 @@ self.addEventListener('install', function(event) {
 });
 
 self.addEventListener('fetch', function(event) {
+  if (event.request.url.includes('manifest.json')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith(
     caches.open('mysite-dynamic').then(function(cache) {
       return cache.match(event.request).then(function (response) {

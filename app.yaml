@@ -12,9 +12,9 @@ handlers:
   static_files: sw.js
   upload: sw.js
 
-- url: /icon144.png
-  static_files: icon144.png
-  upload: icon144.png
+- url: /icon192.png
+  static_files: icon192.png
+  upload: icon192.png
 
 - url: /manifest.json
   static_files: manifest.json
