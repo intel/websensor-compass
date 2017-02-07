@@ -730,7 +730,7 @@ class Euler{
       };
 
       this.sensors.AmbientLightSensor.onchange = event => {
-        let value = Math.min(Math.max(remap(this.sensors.AmbientLightSensor.reading.illuminance, 0, 100, 0, 100), 0), 100);
+        let value = Math.min(Math.max(remap(this.sensors.AmbientLightSensor.illuminance, 0, 100, 0, 100), 0), 100);
         this.canvasEl.style = `filter: grayscale(${value}%)`;
       }
 
@@ -745,9 +745,9 @@ class Euler{
       }
 
       this.sensors.Accelerometer.onchange = event => {
-        let xAccel = this.sensors.Accelerometer.reading.y / 9.81;
-        let yAccel = this.sensors.Accelerometer.reading.x / 9.81;
-        let zAccel = this.sensors.Accelerometer.reading.z / 9.81;
+        let xAccel = this.sensors.Accelerometer.y / 9.81;
+        let yAccel = this.sensors.Accelerometer.x / 9.81;
+        let zAccel = this.sensors.Accelerometer.z / 9.81;
 
         let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
         this.beta = (xAccel / norm) * 180 / 2;
@@ -797,9 +797,9 @@ class Euler{
         let zAccel = 0;
 
         if (weight != 1) {
-          xAccel = this.sensors.Accelerometer.reading.y / 9.81;
-          yAccel = this.sensors.Accelerometer.reading.x / 9.81;
-          zAccel = this.sensors.Accelerometer.reading.z / 9.81;
+          xAccel = this.sensors.Accelerometer.y / 9.81;
+          yAccel = this.sensors.Accelerometer.x / 9.81;
+          zAccel = this.sensors.Accelerometer.z / 9.81;
 
           let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
           xAccel = (xAccel / norm) * 90;
@@ -807,15 +807,15 @@ class Euler{
           zAccel = (zAccel / norm);
         }
 
-        let xGyro = this.sensors.Gyroscope.reading.x * 180 / Math.PI;
-        let yGyro = this.sensors.Gyroscope.reading.y * 180 / Math.PI;
-        let zGyro = this.sensors.Gyroscope.reading.z * 180 / Math.PI;
+        let xGyro = this.sensors.Gyroscope.x * 180 / Math.PI;
+        let yGyro = this.sensors.Gyroscope.y * 180 / Math.PI;
+        let zGyro = this.sensors.Gyroscope.z * 180 / Math.PI;
 
         let dt = 0;
         if (this.timestamp) {
-          dt = (this.sensors.Gyroscope.reading.timeStamp - this.timestamp) / 1000;
+          dt = (this.sensors.Gyroscope.timestamp - this.timestamp) / 1000;
         }
-        this.timestamp = this.sensors.Gyroscope.reading.timeStamp;
+        this.timestamp = this.sensors.Gyroscope.timestamp;
 
         // Kalmar filter
         if (weight <= 0) {
@@ -844,7 +844,7 @@ class Euler{
       }
 
       this.sensors.Magnetometer.onchange = event => {
-        let rotationMatrix = RotationMatrix.fromSensorData(this.sensors.Accelerometer.reading, this.sensors.Magnetometer.reading);
+        let rotationMatrix = RotationMatrix.fromSensorData(this.sensors.Accelerometer, this.sensors.Magnetometer);
         let euler = Euler.fromRotationMatrix(rotationMatrix);
 
         this.alpha = euler.alpha;
