@@ -619,21 +619,25 @@ class Euler{
       try {
         this.sensors.Accelerometer = null;
         this.sensors.Accelerometer = new Accelerometer({ frequency: 50, includeGravity: true });
+        this.sensors.Accelerometer.onerror = console.log;
       } catch(err) { }
 
       try {
         this.sensors.Gyroscope = null;
         this.sensors.Gyroscope = new Gyroscope({ frequency: 50 });
+        this.sensors.Gyroscope.onerror = console.log;
       } catch(err) { }
 
       try {
         this.sensors.Magnetometer = null;
         this.sensors.Magnetometer = new Magnetometer({ frequency: 50 });
+        this.sensors.Magnetometer.onerror = console.log;
       } catch(err) { }
 
       try {
         this.sensors.AmbientLightSensor = null;
         this.sensors.AmbientLightSensor = new AmbientLightSensor({ frequency: 50 });
+        this.sensors.AmbientLightSensor.onerror = console.log;
       } catch(err) { }
 
       try {
@@ -1083,16 +1087,14 @@ class Euler{
       this.mDetailsLevel = 1;
       this.mReversedRing = true;
 
-      this.mNeedObjectsUpdate = true;
-      this.mNeedTextureUpdate = true;
+      this.needsInitializing = true;
+      this.ready = false;
     }
 
     buildObjects() {
       this.buildRingObject();
       this.buildCapObject();
       this.buildDialObject();
-
-      this.mNeedObjectsUpdate = false;
     }
 
     buildRingObject() {
@@ -1310,25 +1312,47 @@ class Euler{
       this.mDialIndexBufferGL.numItems = indices.length;
     }
 
-    buildTextures() {
+    buildImageTexture(entry, canvas) {
+      return new Promise(resolve => {
+        const image = document.createElement('img');
+        image.onload = _ => {
+          this.mTextures[entry] = this.gl.createTexture();
+
+          this.gl.bindTexture(this.gl.TEXTURE_2D, this.mTextures[entry]);
+          this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, image);
+
+          // see: http://stackoverflow.com/a/19748905
+          if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
+            // the dimensions are power of 2 so generate mips and turn on
+            // tri-linear filtering.
+            this.gl.generateMipmap(this.gl.TEXTURE_2D);
+            this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR_MIPMAP_LINEAR);
+          } else {
+            // at least one of the dimensions is not a power of 2 so set the filtering
+            // so WebGL will render it.
+            this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+            this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+            this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
+          }
+
+          this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+
+          resolve(image);
+        };
+
+        image.src = canvas.toDataURL();
+      });
+    }
+
+    async buildTextures() {
       this.mTextures = new Array(2);
 
-      this.mTextures[this.TEXTURE_RING] = this.gl.createTexture();
-      this.mTextures[this.TEXTURE_DIAL] = this.gl.createTexture();
+      await Promise.all([
+        this.buildRingTexture(),
+        this.buildDialTexture(),
+      ]);
 
-      // Initialize textures with empty 1x1 texture while real textures are loaded
-      // see: http://stackoverflow.com/a/19748905
-      for(var i = 0, l = this.mTextures.length; i < l; i++) {
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.mTextures[i]);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, 1, 1, 0, this.gl.RGBA, this.gl.UNSIGNED_BYTE,
-          new Uint8Array([0, 0, 0, 255])); // initialize as black 1x1 texture
-        this.gl.bindTexture(this.gl.TEXTURE_2D, null);
-      }
-
-      this.buildRingTexture();
-      this.buildDialTexture();
-
-      this.mNeedTextureUpdate = false;
+      this.ready = true;
     }
 
     buildRingTexture() {
@@ -1412,32 +1436,7 @@ class Euler{
 
       context.fillRect(0, 0, length, 5);
 
-      // ***
-      var image = document.createElement('img');
-      image.onload = _ => {
-        this.mTextures[this.TEXTURE_RING] = this.gl.createTexture();
-
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.mTextures[this.TEXTURE_RING]);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, image);
-
-        // see: http://stackoverflow.com/a/19748905
-        if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
-          // the dimensions are power of 2 so generate mips and turn on
-          // tri-linear filtering.
-          this.gl.generateMipmap(this.gl.TEXTURE_2D);
-          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR_MIPMAP_LINEAR);
-        } else {
-          // at least one of the dimensions is not a power of 2 so set the filtering
-          // so WebGL will render it.
-          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
-        }
-
-        this.gl.bindTexture(this.gl.TEXTURE_2D, null);
-        this.compassrenderer.compass.checkGLError();
-      };
-      image.src = canvas.toDataURL();
+      return this.buildImageTexture(this.TEXTURE_RING, canvas);
     }
 
     buildDialTexture() {
@@ -1560,42 +1559,18 @@ class Euler{
         context.restore();
       }
 
-      // ***
-      var image = document.createElement('img');
-      image.onload = _ => {
-        this.mTextures[this.TEXTURE_DIAL] = this.gl.createTexture();
-
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.mTextures[this.TEXTURE_DIAL]);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, image);
-
-        // see: http://stackoverflow.com/a/19748905
-        if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
-          // the dimensions are power of 2 so generate mips and turn on
-          // tri-linear filtering.
-          this.gl.generateMipmap(this.gl.TEXTURE_2D);
-          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR_MIPMAP_LINEAR);
-        } else {
-          // at least one of the dimensions is not a power of 2 so set the filtering
-          // so WebGL will render it.
-          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
-        }
-
-        this.gl.bindTexture(this.gl.TEXTURE_2D, null);
-        this.compassrenderer.compass.checkGLError();
-      };
-      image.src = canvas.toDataURL();
+      return this.buildImageTexture(this.TEXTURE_DIAL, canvas);
     }
 
     draw() {
-      // rebuild objects or textures if needed
-      if (this.mNeedObjectsUpdate) {
+      if (this.needsInitializing) {
+        this.needsInitializing = false;
         this.buildObjects();
+        this.buildTextures();
       }
 
-      if (this.mNeedTextureUpdate) {
-        this.buildTextures();
+      if (!this.ready) {
+        return;
       }
 
       var dx = this.DETAIL_X[this.mDetailsLevel];
@@ -1612,9 +1587,7 @@ class Euler{
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.mRingTexCoordBufferGL);
       this.gl.vertexAttribPointer(this.gl.textureCoordAttribute, this.mRingTexCoordBufferGL.itemSize, this.gl.FLOAT, false, 0, 0);
 
-      //this.gl.activeTexture(this.gl.TEXTURE0);
       this.gl.bindTexture(this.gl.TEXTURE_2D, this.mTextures[this.TEXTURE_RING]);
-      //this.gl.uniform1i(this.compassrenderer.shaderProgram.shaderUniform, 0);
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.mRingIndexBufferGL);
 
       this.gl.drawElements(this.gl.TRIANGLES, dx * rh * 6, this.gl.UNSIGNED_SHORT, 0);
@@ -1626,21 +1599,21 @@ class Euler{
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.mDialTexCoordBufferGL);
       this.gl.vertexAttribPointer(this.gl.textureCoordAttribute, this.mDialTexCoordBufferGL.itemSize, this.gl.FLOAT, false, 0, 0);
 
-      //this.gl.activeTexture(this.gl.TEXTURE1);
       this.gl.bindTexture(this.gl.TEXTURE_2D, this.mTextures[this.TEXTURE_DIAL]);
-      //this.gl.uniform1i(this.compassrenderer.shaderProgram.shaderUniform, 1);
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.mDialIndexBufferGL);
 
       this.gl.drawElements(this.gl.TRIANGLE_FAN, dx + 2, this.gl.UNSIGNED_SHORT, 0);
 
+
+      // Draw Cap Object
+
       // Disable texture for cap object
       this.gl.disableVertexAttribArray(this.gl.textureCoordAttribute);
 
-      // Draw Cap Object
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.mCapVertexBufferGL);
       this.gl.vertexAttribPointer(this.gl.vertexPositionAttribute, this.mCapVertexBufferGL.itemSize, this.gl.FLOAT, false, 0, 0);
 
-      this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+      //this.gl.bindTexture(this.gl.TEXTURE_2D, null);
 
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.mCapIndexBufferGL);
 
