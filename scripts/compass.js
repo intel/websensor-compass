@@ -1081,6 +1081,7 @@ class Euler{
 
       this.TEXTURE_RING = 0;
       this.TEXTURE_DIAL = 1;
+      this.TEXTURE_CAP = 2;
 
       this.CARDINAL_POINTS = ["N", "W", "S", "E"];
 
@@ -1222,11 +1223,24 @@ class Euler{
         }
       }
 
+      // Create texture coordinates for the 1x1 dummy texture,
+      // all of which points to the [0, 0] texel.
+      let texCoords = [];
+      for (let i = 0; i < vertices.length; i++) {
+        texCoords.push(0);
+      }
+
       this.mCapVertexBufferGL = this.gl.createBuffer();
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.mCapVertexBufferGL);
       this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(vertices), this.gl.STATIC_DRAW);
       this.mCapVertexBufferGL.itemSize = 3;
       this.mCapVertexBufferGL.numItems = vertices.length / 3;
+
+      this.mCapTexCoordBufferGL = this.gl.createBuffer();
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.mCapTexCoordBufferGL);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(texCoords), this.gl.STATIC_DRAW);
+      this.mCapTexCoordBufferGL.itemSize = 2;
+      this.mCapTexCoordBufferGL.numItems = texCoords.length / 2;
 
       this.mCapIndexBufferGL = this.gl.createBuffer();
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.mCapIndexBufferGL);
@@ -1345,14 +1359,26 @@ class Euler{
     }
 
     async buildTextures() {
-      this.mTextures = new Array(2);
+      this.mTextures = new Array(3);
 
       await Promise.all([
         this.buildRingTexture(),
         this.buildDialTexture(),
+        this.buildCapTexture()
       ]);
 
       this.ready = true;
+    }
+
+    buildCapTexture() {
+      this.mTextures[this.TEXTURE_CAP] = this.gl.createTexture();
+
+      this.gl.bindTexture(this.gl.TEXTURE_2D, this.mTextures[this.TEXTURE_CAP]);
+      this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, 1, 1, 0, this.gl.RGBA, this.gl.UNSIGNED_BYTE,
+        new Uint8Array([0, 0, 0, 255])); // initialize as black 1x1 texture
+
+      this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+      return Promise.resolve();
     }
 
     buildRingTexture() {
@@ -1606,15 +1632,13 @@ class Euler{
 
 
       // Draw Cap Object
-
-      // Disable texture for cap object
-      this.gl.disableVertexAttribArray(this.gl.textureCoordAttribute);
-
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.mCapVertexBufferGL);
       this.gl.vertexAttribPointer(this.gl.vertexPositionAttribute, this.mCapVertexBufferGL.itemSize, this.gl.FLOAT, false, 0, 0);
 
-      //this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.mCapTexCoordBufferGL);
+      this.gl.vertexAttribPointer(this.gl.textureCoordAttribute, this.mCapTexCoordBufferGL.itemSize, this.gl.FLOAT, false, 0, 0);
 
+      this.gl.bindTexture(this.gl.TEXTURE_2D, this.mTextures[this.TEXTURE_CAP]);
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.mCapIndexBufferGL);
 
       this.gl.drawElements(this.gl.TRIANGLES, dx * (dy - rh) * 6, this.gl.UNSIGNED_SHORT, 0);
