@@ -26,6 +26,119 @@
   * URLs:      http://www.pierrox.net/cmsms/applications/marine-compass.html
   */
 
+/**
+ * DayDreamController:
+ * @author mrdoob / http://mrdoob.com/ and Kenneth Christiansen
+ */
+
+class DaydreamController {
+  constructor() {
+    const state = {
+      timestamp: 0,
+      sequence: -1
+    };
+
+    this.orientation = new class OrientationSensor {
+      get timestamp() { return state.timestamp / 10; }
+      get x() { return state.orientationData[0]; }
+      get y() { return state.orientationData[1]; }
+      get z() { return state.orientationData[2]; }
+      constructor() { this.onchange = null; }
+    }
+
+    this.accelerometer = new class Accelerometer {
+      get timestamp() { return state.timestamp / 10; }
+      get x() { return state.accelerometerData[0]; }
+      get y() { return state.accelerometerData[1]; }
+      get z() { return state.accelerometerData[2]; }
+      constructor() { this.onchange = null; }
+    }
+
+    this.gyroscope = new class Gyroscope {
+      get timestamp() { return state.timestamp / 10; }
+      get x() { return state.gyroscopeData[0]; }
+      get y() { return state.gyroscopeData[1]; }
+      get z() { return state.gyroscopeData[2]; }
+      constructor() { this.onchange = null; }
+    }
+
+    const connect = async () => {
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [ { name: 'Daydream controller' } ],
+            optionalServices: [ '0000fe55-0000-1000-8000-00805f9b34fb' ]
+        });
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService('0000fe55-0000-1000-8000-00805f9b34fb');
+        const characteristic = await service.getCharacteristic('00000001-1000-1000-8000-00805f9b34fb');
+
+        characteristic.addEventListener('characteristicvaluechanged', oncharacteristicvaluechanged);
+        characteristic.startNotifications();
+      } catch(err) {
+        console.log(err);
+      }
+    }
+
+    // We have 12 bit values plus sign (last bit), so extend to 32.
+    const signext = value => (value << 19) >> 19;
+
+    const oncharacteristicvaluechanged = (event) => {
+      const data = event.target.value;
+
+      const timestamp = ((data.getUint8(0) & 0xFF) << 1 | (data.getUint8(1) & 0x80) >> 7);
+      const sequence = (data.getUint8(1) & 0x7C) >> 2;
+
+      // Same sequence, drop.
+      if (sequence === state.sequence) return;
+
+      state.sequence = sequence;
+      state.timestamp += timestamp;
+
+      // http://stackoverflow.com/questions/40730809/use-daydream-controller-on-hololens-or-outside-daydream/40753551#40753551
+
+      state.isClickDown = (data.getUint8(18) & 0x1) > 0;
+      state.isAppDown = (data.getUint8(18) & 0x4) > 0;
+      state.isHomeDown = (data.getUint8(18) & 0x2) > 0;
+      state.isVolumePlusDown = (data.getUint8(18) & 0x10) > 0;
+      state.isVolumeMinusDown = (data.getUint8(18) & 0x8) > 0;
+
+      state.orientationData = [
+        (data.getUint8(1) & 0x03) << 11 | (data.getUint8(2) & 0xFF) << 3 | (data.getUint8(3) & 0x80) >> 5,
+        (data.getUint8(3) & 0x1F) << 8 | (data.getUint8(4) & 0xFF),
+        (data.getUint8(5) & 0xFF) << 5 | (data.getUint8(6) & 0xF8) >> 3
+      ]
+      .map(signext)
+      .map(value => value * 2 * Math.PI / 4095.0 /* 12 bit precision (2 ** 12) - 1 */);
+
+      state.accelerometerData = [
+        (data.getUint8(6) & 0x07) << 10 | (data.getUint8(7) & 0xFF) << 2 | (data.getUint8(8) & 0xC0) >> 6,
+        (data.getUint8(8) & 0x3F) << 7 | (data.getUint8(9) & 0xFE) >>> 1,
+        (data.getUint8(9) & 0x01) << 12 | (data.getUint8(10) & 0xFF) << 4 | (data.getUint8(11) & 0xF0) >> 4
+      ]
+      .map(signext)
+      .map(value => value * 8 * 9.81 /* gravity on earth */ / 4095.0);
+
+      state.gyroscopeData = [
+        ((data.getUint8(11) & 0x0F) << 9 | (data.getUint8(12) & 0xFF) << 1 | (data.getUint8(13) & 0x80) >> 7),
+        ((data.getUint8(13) & 0x7F) << 6 | (data.getUint8(14) & 0xFC) >> 2),
+        ((data.getUint8(14) & 0x03) << 11 | (data.getUint8(15) & 0xFF) << 3 | (data.getUint8(16) & 0xE0) >> 5)
+      ]
+      .map(signext)
+      .map(value => value * 2048 / 180 * Math.PI / 4095.0);
+
+      state.xTouch = ((data.getUint8(16) & 0x1F) << 3 | (data.getUint8(17) & 0xE0) >> 5) / 255.0;
+      state.yTouch = ((data.getUint8(17) & 0x1F) << 3 | (data.getUint8(18) & 0xE0) >> 5) / 255.0;
+
+      if (this.orientation.onchange) this.orientation.onchange();
+      if (this.accelerometer.onchange) this.accelerometer.onchange();
+      if (this.gyroscope.onchange) this.gyroscope.onchange();
+    }
+
+    Object.assign(this, { connect });
+  }
+}
+
 var degToRad = Math.PI / 180;
 var radToDeg = 180 / Math.PI;
 
@@ -405,7 +518,7 @@ class RotationMatrix extends DOMMatrix {
   }
 };
 
-class Euler{
+class Euler {
   constructor(alpha, beta, gamma) {
     this.alpha = alpha;
     this.beta = beta;
@@ -616,29 +729,7 @@ class Euler{
 
       this.sensors = {};
 
-      try {
-        this.sensors.Accelerometer = null;
-        this.sensors.Accelerometer = new Accelerometer({ frequency: 50, includeGravity: true });
-        this.sensors.Accelerometer.onerror = console.log;
-      } catch(err) { }
-
-      try {
-        this.sensors.Gyroscope = null;
-        this.sensors.Gyroscope = new Gyroscope({ frequency: 50 });
-        this.sensors.Gyroscope.onerror = console.log;
-      } catch(err) { }
-
-      try {
-        this.sensors.Magnetometer = null;
-        this.sensors.Magnetometer = new Magnetometer({ frequency: 50 });
-        this.sensors.Magnetometer.onerror = console.log;
-      } catch(err) { }
-
-      try {
-        this.sensors.AmbientLightSensor = null;
-        this.sensors.AmbientLightSensor = new AmbientLightSensor({ frequency: 50 });
-        this.sensors.AmbientLightSensor.onerror = console.log;
-      } catch(err) { }
+      this.daydream = null;
 
       try {
         this.gl = create3DContext(this.canvasEl);
@@ -658,6 +749,13 @@ class Euler{
       }
     }
 
+    set useDaydream(value) {
+      this.daydream = (value) ? new DaydreamController() : null;
+      this.onRouteChanged();
+
+      if (this.daydream) this.daydream.connect();
+    }
+
     setTitle(value) {
       this.mCompassRenderer.setCompassFilter(value);
     }
@@ -675,6 +773,42 @@ class Euler{
         //   sensor.stop();
         // }
       }
+
+      try {
+        this.sensors.Accelerometer = null;
+        this.sensors.Accelerometer = (this.daydream) ? this.daydream.accelerometer : new Accelerometer({ frequency: 50, includeGravity: true });
+        this.sensors.Accelerometer.onerror = err => {
+          this.sensors.Accelerometer = null;
+          console.log(`Accelerometer ${err.error}`)
+        };
+      } catch(err) { }
+
+      try {
+        this.sensors.Gyroscope = null;
+        this.sensors.Gyroscope = (this.daydream) ? this.daydream.gyroscope : new Gyroscope({ frequency: 50 });
+        this.sensors.Gyroscope.onerror = err => {
+          this.sensors.Gyroscope = null;
+          console.log(`Gyroscope ${err.error}`)
+        };
+      } catch(err) { }
+
+      try {
+        this.sensors.Magnetometer = null;
+        this.sensors.Magnetometer = new Magnetometer({ frequency: 50 });
+        this.sensors.Magnetometer.onerror = err => {
+          this.sensors.Magnetometer = null;
+          console.log(`Magnetometer ${err.error}`)
+        };
+      } catch(err) { }
+
+      try {
+        this.sensors.AmbientLightSensor = null;
+        this.sensors.AmbientLightSensor = new AmbientLightSensor({ frequency: 50 });
+        this.sensors.AmbientLightSensor.onerror = err => {
+          this.sensors.AmbientLightSensor = null;
+          console.log(`AmbientLightSensor ${err.error}`)
+        };
+      } catch(err) { }
 
       this.alpha = 0.0;
       this.beta = 0.0;

@@ -396,9 +396,17 @@
     }
   });
 
+  let useDaydream = false;
+
   function changeRoute(route) {
     window.history.replaceState({}, '', `?filter=${route}`);
     document.querySelector('sensor-compass').onRouteChanged();
+    document.querySelector('menu-drawer').opened = false;
+  }
+
+  function daydream() {
+    useDaydream = !useDaydream;
+    document.querySelector('sensor-compass').useDaydream = useDaydream;
     document.querySelector('menu-drawer').opened = false;
   }
 </script>
@@ -413,6 +421,7 @@
       <button onclick="changeRoute('m')">Magnetometer (magnet + accel)</button>
       <button onclick="changeRoute('c')">Complementary filter (accel + gyro)</button>
       <button onclick="changeRoute('k')">Kalman filter (accel + gyro)</button>
+      <button onclick="daydream()">Use Daydream Controller</button>
     </div>
   </menu-drawer>
   <error-console></error-console>
