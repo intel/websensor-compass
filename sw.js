@@ -1,3 +1,5 @@
+let version = 2;
+
 self.addEventListener('install', function(event) {
 });
 

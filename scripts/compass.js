@@ -142,6 +142,37 @@ class DaydreamController {
 var degToRad = Math.PI / 180;
 var radToDeg = 180 / Math.PI;
 
+class HighPassFilterData {
+  constructor(reading, cutoffFrequency) {
+    Object.assign(this, { x: reading.x, y: reading.y, z: reading.z });
+    this.cutoff = cutoffFrequency;
+    this.timestamp = reading.timestamp;
+  }
+
+  update(reading) {
+    let dt = reading.timestamp - this.timestamp / 1000;
+    this.timestamp = reading.timestamp;
+
+    for (let i of ["x", "y", "z"]) {
+      let alpha = this.cutoff / (this.cutoff + dt);
+      this[i] = this[i] + alpha * (reading[i] - this[i]);
+    }
+  }
+};
+
+class LowPassFilterData {
+  constructor(reading, bias) {
+    Object.assign(this, { x: reading.x, y: reading.y, z: reading.z });
+    this.bias = bias;
+  }
+
+  update(reading) {
+    this.x = this.x * this.bias + reading.x * (1 - this.bias);
+    this.y = this.y * this.bias + reading.y * (1 - this.bias);
+    this.z = this.z * this.bias + reading.z * (1 - this.bias);
+  }
+};
+
 class KalmanFilter {
   constructor() {
     this.Q_angle = 0.01;
@@ -849,7 +880,7 @@ class Euler {
         }
       }
       for (let sensor of requiredSensors) {
-        if (this.sensors[sensor].state == "idle") {
+        if (this.sensors[sensor].state == "unconnected") {
           this.sensors[sensor].start();
         }
       }
@@ -981,11 +1012,18 @@ class Euler {
         return false;
       }
 
+      // Isolate gravity with low pass filter.
+      const gravity = new LowPassFilterData(this.sensors.Accelerometer, 0.8);
+
       this.sensors.Magnetometer.onchange = event => {
-        let rotationMatrix = RotationMatrix.fromSensorData(this.sensors.Accelerometer, this.sensors.Magnetometer);
+        gravity.update(this.sensors.Accelerometer);
+
+        let rotationMatrix = RotationMatrix.fromSensorData(gravity, this.sensors.Magnetometer);
         let euler = Euler.fromRotationMatrix(rotationMatrix);
 
         this.alpha = euler.alpha;
+        this.beta = euler.beta;
+        this.gamma = euler.gamma;
       };
     }
 
