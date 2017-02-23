@@ -173,6 +173,60 @@ class LowPassFilterData {
   }
 };
 
+class CompassSensor {
+  constructor() {
+    const cross = (a, b) => {
+      return {
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x
+      };
+    }
+
+    const normalized = (a) => {
+      const norm = Math.sqrt(a.x ** 2 + a.y ** 2 + a.z ** 2);
+      return {
+        x: a.x / norm,
+        y: a.y / norm,
+        z: a.z / norm
+      };
+    }
+
+    function update(gravity, geomagnetic) {
+      // The gravity vector points towards the earths core when mostly stationary.
+      // The magnetic vector points to the north, but not necessarily horizontally
+      // with the ground.
+
+      const ground = normalized(gravity);
+      const bField = normalized(geomagnetic);
+
+      // The cross product between the gravity and magnetic
+      // vector will point east on horizontal plane.
+      const east = normalized(cross(gravity, geomagnetic));
+
+      // The cross product gravity vector and the east vector
+      // will point north on horizontal plane.
+      const north = normalized(cross(east, ground));
+
+      const matrix = new RotationMatrix(
+        north.x, north.y, north.z,   // Normal (North)
+        east.x, east.y, east.z,      // Tangent (East)
+        ground.x, ground.y, ground.z // Binormal (North X East == Ground)
+      );
+
+      const euler = Euler.fromRotationMatrix(matrix);
+
+      this.alpha = euler.alpha;
+      this.beta = euler.beta;
+      this.gamma = euler.gamma;
+
+      if (this.onchange) this.onchange();
+    }
+
+    Object.assign(this, { update });
+  }
+}
+
 class KalmanFilter {
   constructor() {
     this.Q_angle = 0.01;
@@ -424,41 +478,6 @@ class RotationMatrix extends DOMMatrix {
     matrix.m33 = other.m33;
 
     return matrix;
-  }
-
-  static fromSensorData(gravity, geomagnetic) {
-    // The gravity (accelerometer with gravity) vector points towards
-    // the earths core when mostly stationary. The magnetic vector
-    // points to the north, but not necessarily horizontally with the
-    // ground.
-    let cross = (a, b) => {
-      return [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0]
-      ];
-    }
-
-    let normalize = (a) => {
-      let norm = Math.sqrt(a[0] ** 2 + a[1] ** 2 + a[2] ** 2);
-      a[0] /= norm;
-      a[1] /= norm;
-      a[2] /= norm;
-      return a;
-    }
-
-    let uG = normalize([gravity.x, gravity.y, gravity.z]);
-    let uB = normalize([geomagnetic.x, geomagnetic.y, geomagnetic.z]);
-
-    // The cross product between the gravity and magnetic
-    // vector will point east on horizontal plane.
-    let uE = normalize(cross(uG, uB));
-
-    // The cross product gravity vector and the east vector
-    // will point north on horizontal plane.
-    let uN = normalize(cross(uE, uG));
-
-    return new RotationMatrix(...uN, ...uE, ...uG);
   }
 
   static fromEuler(euler) {
@@ -1014,16 +1033,15 @@ class Euler {
 
       // Isolate gravity with low pass filter.
       const gravity = new LowPassFilterData(this.sensors.Accelerometer, 0.8);
+      const compass = new CompassSensor();
 
       this.sensors.Magnetometer.onchange = event => {
         gravity.update(this.sensors.Accelerometer);
+        compass.update(gravity, this.sensors.Magnetometer);
 
-        let rotationMatrix = RotationMatrix.fromSensorData(gravity, this.sensors.Magnetometer);
-        let euler = Euler.fromRotationMatrix(rotationMatrix);
-
-        this.alpha = euler.alpha;
-        this.beta = euler.beta;
-        this.gamma = euler.gamma;
+        this.alpha = compass.alpha;
+        this.beta = compass.beta;
+        this.gamma = compass.gamma;
       };
     }
 
