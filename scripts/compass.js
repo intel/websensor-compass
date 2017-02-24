@@ -206,23 +206,6 @@ class GeolocationSensor {
 
 class CompassSensor {
   constructor() {
-    const cross = (a, b) => {
-      return {
-        x: a.y * b.z - a.z * b.y,
-        y: a.z * b.x - a.x * b.z,
-        z: a.x * b.y - a.y * b.x
-      };
-    }
-
-    const normalized = (a) => {
-      const norm = Math.sqrt(a.x ** 2 + a.y ** 2 + a.z ** 2);
-      return {
-        x: a.x / norm,
-        y: a.y / norm,
-        z: a.z / norm
-      };
-    }
-
     const geolocation = new GeolocationSensor({ enableHighAccuracy: true });
     let geofield = null;
     geolocation.onchange = function() {
@@ -236,30 +219,34 @@ class CompassSensor {
       // The magnetic vector points to the north, but not necessarily horizontally
       // with the ground.
 
-      const ground = normalized(gravity);
-      const bField = normalized(geomagnetic);
+      const ground = vec3.normalize(vec3.create(), vec3.fromValues(gravity.x, gravity.y, gravity.z));
+      const bField = vec3.normalize(vec3.create(), vec3.fromValues(geomagnetic.x, geomagnetic.y, geomagnetic.z));
 
       // The cross product between the gravity and magnetic
       // vector will point east on horizontal plane.
-      const east = normalized(cross(gravity, geomagnetic));
+      const east = vec3.normalize(vec3.create(), vec3.cross(vec3.create(), ground, bField));
 
       // The cross product gravity vector and the east vector
       // will point north on horizontal plane.
-      const north = normalized(cross(east, ground));
+      const north = vec3.normalize(vec3.create(), vec3.cross(vec3.create(), east, ground));
 
-      const matrix = new RotationMatrix(
-        north.x, north.y, north.z,   // Normal (North)
-        east.x, east.y, east.z,      // Tangent (East)
-        ground.x, ground.y, ground.z // Binormal (North X East == Ground)
+      const orientation = mat4.set(mat4.create(),
+        north[0], north[1], north[2], 0,
+        east[0], east[1], east[2], 0,
+        ground[0], ground[1], ground[2], 0,
+        0, 0, 0, 1
       );
 
-      matrix.rotateAxisAngleSelf(0, 0, 1, (geofield) ? geofield.declination - 90: 0);
+      mat4.rotateZ(orientation, orientation, (geofield) ? geofield.declinationRad : 0);
 
-      const euler = Euler.fromRotationMatrix(matrix);
+      // FIXME: Some bug somewhere!
+      mat4.rotateZ(orientation, orientation, - Math.PI / 2);
 
-      this.alpha = euler.alpha;
-      this.beta = euler.beta;
-      this.gamma = euler.gamma;
+      const angles = euler.fromMat4(euler.create(), orientation);
+
+      this.alpha = angles[0];
+      this.beta = angles[1];
+      this.gamma = angles[2];
 
       if (this.onchange) this.onchange();
     }
@@ -548,16 +535,16 @@ class GeomagneticField {
 
   /**
    * @return The declination of the horizontal component of the magnetic
-   *         field from true north, in degrees (i.e. positive means the
+   *         field from true north, in radians (i.e. positive means the
    *         magnetic field is rotated east that much from true north).
    */
-  get declination() { return  (180 / Math.PI) * Math.atan2(this.mY, this.mX); }
+  get declinationRad() { return Math.atan2(this.mY, this.mX); }
 
   /**
-   * @return The inclination of the magnetic field in degrees -- positive
+   * @return The inclination of the magnetic field in radians -- positive
    *         means the magnetic field is rotated downwards.
    */
-  get inclination() { return (180 / Math.PI) * Math.atan2(this.mZ, this.horizontalStrength); }
+  get inclinationRad() { return Math.atan2(this.mZ, this.horizontalStrength); }
 
   /**
    * @return  Horizontal component of the field strength in nonoteslas.
@@ -671,427 +658,90 @@ class KalmanFilter {
   }
 };
 
-if (typeof DOMMatrix == "undefined") {
-  window.DOMMatrix = class DOMMatrix {
-    constructor(...args) {
-      if (args.length == 0) {
-        args = [1, 0, 0, 1, 0, 0];
-      }
+const euler = {};
 
-      if (args.length == 6) {
-        let nargs = [
-          args[0], args[1], 0, 0,
-          args[2], args[3], 0, 0,
-          0,       0,       1, 0,
-          args[4], args[5], 0, 1
-        ]
-        args = nargs;
-      }
-
-      if (args.length != 16) {
-        throw new TypeError;
-      }
-
-      this._m = args;
-      let add = (prop, index) => {
-        Object.defineProperty(this, prop, {
-          set: (v) => this._m[index] = v, get: () => this._m[index]
-        });
-      }
-
-      for (let i = 0; i < 4; i++) {
-        for (let j = 0; j < 4; j++) {
-          add(`m${i+1}${j+1}`, i * 4 + j);
-        }
-      }
-
-      add('a', 0);
-      add('b', 1);
-      add('c', 4);
-      add('d', 4 + 1);
-      add('e', 3 * 4);
-      add('f', 3 * 4 + 1);
-
-      this.is2D = true;
-      for (let entry of ["m31", "m32", "m13", "m23", "m43", "m14", "m24", "m34"]) {
-        if (this[entry] != 0)
-          this.is2D = false;
-          break;
-      }
-      for (let entry of ["m33", "m44"]) {
-        if (this[entry] != 1)
-          this.is2D = false;
-          break;
-      }
-    }
-
-    _multiply(a, b) {
-      let result = new Array(16);
-
-      for (let i = 0; i < 4; i++) {
-        for (let j = 0; j < 4; j++) {
-          let c = 0;
-          for (let k = 0; k < 4; k++) {
-              c += a[i * 4 + k] * b[k * 4 + j];
-          }
-          result[i * 4 + j] = c;
-        }
-      }
-
-      return result;
-    }
-
-    multiplySelf(other) {
-      return this._m = this._multiply(this._m, other._m);
-    }
-
-    preMultiplySelf(other) {
-      return this._m = this._multiply(other._m, this._m);
-    }
-
-    rotateAxisAngleSelf(x, y, z, angle) {
-      let length = Math.sqrt(x * x + y * y + z * z);
-
-      if (length == 0) {
-          // A direction vector that cannot be normalized, such as [0, 0, 0],
-          // will cause the rotation to not be applied.
-          return this;
-      } else if (length != 1) {
-          x /= length;
-          y /= length;
-          z /= length;
-      }
-
-      // Angles are in degrees. Switch to radians.
-      angle = angle * degToRad;
-      let sinTheta = Math.sin(angle);
-      let cosTheta = Math.cos(angle);
-
-      let mat = new DOMMatrix();
-
-      // Optimize cases where the axis is along a major axis
-      if (x == 1 && y == 0 && z == 0) {
-        mat.m11 = 1;
-        mat.m12 = 0;
-        mat.m13 = 0;
-        mat.m21 = 0;
-        mat.m22 = cosTheta;
-        mat.m23 = sinTheta;
-        mat.m31 = 0;
-        mat.m32 = -sinTheta;
-        mat.m33 = cosTheta;
-        mat.m14 = mat.m24 = mat.m34 = 0;
-        mat.m41 = mat.m42 = mat.m43 = 0;
-        mat.m44 = 1;
-      } else if (x == 0 && y == 1 && z == 0) {
-        mat.m11 = cosTheta;
-        mat.m12 = 0;
-        mat.m13 = -sinTheta;
-        mat.m21 = 0;
-        mat.m22 = 1;
-        mat.m23 = 0;
-        mat.m31 = sinTheta;
-        mat.m32 = 0;
-        mat.m33 = cosTheta;
-        mat.m14 = mat.m24 = mat.m34 = 0;
-        mat.m41 = mat.m42 = mat.m43 = 0;
-        mat.m44 = 1;
-      } else if (x == 0 && y == 0 && z == 1) {
-        mat.m11 = cosTheta;
-        mat.m12 = sinTheta;
-        mat.m13 = 0;
-        mat.m21 = -sinTheta;
-        mat.m22 = cosTheta;
-        mat.m23 = 0;
-        mat.m31 = 0;
-        mat.m32 = 0;
-        mat.m33 = 1;
-        mat.m14 = mat.m24 = mat.m34 = 0;
-        mat.m41 = mat.m42 = mat.m43 = 0;
-        mat.m44 = 1;
-      } else {
-        // This case is the rotation about an arbitrary unit vector.
-        let oneMinusCosTheta = 1 - cosTheta;
-        mat.m11 = cosTheta + x * x * oneMinusCosTheta;
-        mat.m12 = y * x * oneMinusCosTheta + z * sinTheta;
-        mat.m13 = z * x * oneMinusCosTheta - y * sinTheta;
-        mat.m21 = x * y * oneMinusCosTheta - z * sinTheta;
-        mat.m22 = cosTheta + y * y * oneMinusCosTheta;
-        mat.m23 = z * y * oneMinusCosTheta + x * sinTheta;
-        mat.m31 = x * z * oneMinusCosTheta + y * sinTheta;
-        mat.m32 = y * z * oneMinusCosTheta - x * sinTheta;
-        mat.m33 = cosTheta + z * z * oneMinusCosTheta;
-        mat.m14 = mat.m24 = mat.m34 = 0;
-        mat.m41 = mat.m42 = mat.m43 = 0;
-        mat.m44 = 1;
-      }
-
-      return this.multiplySelf(mat);
-    }
-
-    static fromFloat32Array(array32) {
-      return new DOMMatrix(...array32);
-    }
-
-    toFloat32Array() {
-      return new Float32Array([
-        this.m11, this.m12, this.m13, this.m14,
-        this.m21, this.m22, this.m23, this.m24,
-        this.m31, this.m32, this.m33, this.m34,
-        this.m41, this.m42, this.m43, this.m44
-      ]);
-    }
-  }
-}
-
-class RotationMatrix extends DOMMatrix {
-  constructor(...args) {
-    if (args.length == 9) {
-      super();
-      this.m11 = args[0];
-      this.m12 = args[1];
-      this.m13 = args[2];
-
-      this.m21 = args[3];
-      this.m22 = args[4];
-      this.m23 = args[5];
-
-      this.m31 = args[6];
-      this.m32 = args[7];
-      this.m33 = args[8];
-      return;
-    }
-
-    super(...args);
-  }
-
-  static fromRotationMatrix(other) {
-    let matrix = new RotationMatrix();
-    matrix.m11 = other.m11;
-    matrix.m12 = other.m12;
-    matrix.m13 = other.m13;
-    matrix.m21 = other.m21;
-    matrix.m22 = other.m22;
-    matrix.m23 = other.m23;
-    matrix.m31 = other.m31;
-    matrix.m32 = other.m32;
-    matrix.m33 = other.m33;
-
-    return matrix;
-  }
-
-  static fromEuler(euler) {
-    euler = euler || {};
-
-    let z = (euler.alpha || 0) * degToRad;
-    let x = (euler.beta || 0) * degToRad;
-    let y = (euler.gamma || 0) * degToRad;
-
-    let cX = Math.cos(x);
-    let cY = Math.cos(y);
-    let cZ = Math.cos(z);
-    let sX = Math.sin(x);
-    let sY = Math.sin(y);
-    let sZ = Math.sin(z);
-
-    //
-    // ZXY-ordered rotation matrix construction.
-    //
-    let matrix = new RotationMatrix();
-
-    matrix.m11 = cZ * cY - sZ * sX * sY;
-    matrix.m12 = - cX * sZ;
-    matrix.m13 = cY * sZ * sX + cZ * sY;
-
-    matrix.m21 = cY * sZ + cZ * sX * sY;
-    matrix.m22 = cZ * cX;
-    matrix.m23 = sZ * sY - cZ * cY * sX;
-
-    matrix.m31 = - cX * sY;
-    matrix.m32 = sX;
-    matrix.m33 = cX * cY;
-
-    return matrix.normalizeSelf();
-  }
-
-  static fromQuaternion(q) {
-    let sqw, sqx, sqy, sqz;
-
-    sqw = q.w * q.w;
-    sqx = q.x * q.x;
-    sqy = q.y * q.y;
-    sqz = q.z * q.z;
-
-    let matrix = new RotationMatrix();
-
-    matrix.m11 = sqw + sqx - sqy - sqz;
-    matrix.m12 = 2 * (q.x * q.y - q.w * q.z);
-    matrix.m13 = 2 * (q.x * q.z + q.w * q.y);
-
-    matrix.m21 = 2 * (q.x * q.y + q.w * q.z);
-    matrix.m22 = sqw - sqx + sqy - sqz;
-    matrix.m23 = 2 * (q.y * q.z - q.w * q.x);
-
-    matrix.m31 = 2 * (q.x * q.z - q.w * q.y);
-    matrix.m32 = 2 * (q.y * q.z + q.w * q.x);
-    matrix.m33 = sqw - sqx - sqy + sqz;
-
-    return matrix;
-  }
-
-  normalizeSelf() {
-    // Calculate matrix determinant
-    let determinant =
-        this.m11 * this.m22 * this.m33
-      - this.m11 * this.m23 * this.m32
-      - this.m12 * this.m21 * this.m33
-      + this.m12 * this.m23 * this.m31
-      + this.m13 * this.m21 * this.m32
-      - this.m13 * this.m22 * this.m31;
-
-    // Normalize matrix values
-    this.m11 = this.m11 / determinant;
-    this.m12 = this.m12 / determinant;
-    this.m13 = this.m13 / determinant;
-    this.m21 = this.m21 / determinant;
-    this.m22 = this.m22 / determinant;
-    this.m23 = this.m23 / determinant;
-    this.m31 = this.m31 / determinant;
-    this.m32 = this.m32 / determinant;
-    this.m33 = this.m33 / determinant;
-
-    return this;
-  }
-
-  normalize() {
-    return RotationMatrix.fromRotationMatrix(this).normalizeSelf();
-  }
+euler.create = function() {
+    var out = new glMatrix.ARRAY_TYPE(3);
+    out[0] = 0;
+    out[1] = 0;
+    out[2] = 0;
+    return out;
 };
 
-class Euler {
-  constructor(alpha, beta, gamma) {
-    this.alpha = alpha;
-    this.beta = beta;
-    this.gamma = gamma;
+euler.clone = function(a) {
+    var out = new glMatrix.ARRAY_TYPE(3);
+    out[0] = a[0];
+    out[1] = a[1];
+    out[2] = a[2];
+    return out;
+};
+
+euler.toMat4 = function(out, a) {
+  a = a || {};
+
+  const z = (a[0] || 0) * degToRad;
+  const x = (a[1] || 0) * degToRad;
+  const y = (a[2] || 0) * degToRad;
+
+  const cX = Math.cos(x);
+  const cY = Math.cos(y);
+  const cZ = Math.cos(z);
+  const sX = Math.sin(x);
+  const sY = Math.sin(y);
+  const sZ = Math.sin(z);
+
+  mat4.set(out,
+    cZ * cY - sZ * sX * sY, - cX * sZ, cY * sZ * sX + cZ * sY, 0,
+    cY * sZ + cZ * sX * sY, cZ * cX, sZ * sY - cZ * cY * sX, 0,
+    - cX * sY, sX, cX * cY, 0,
+    0, 0, 0, 1
+  );
+
+  return out;
+};
+
+euler.fromMat4 = function(out, a) {
+  if (a[10] > 0) { // cos(beta) > 0
+    out[0] = Math.atan2(-a[1], a[5]);
+    out[1]  = Math.asin(a[9]); // beta (-pi/2, pi/2)
+    out[2] = Math.atan2(-a[8], a[10]); // gamma (-pi/2, pi/2)
+  }
+  else if (a.m33 < 0) {  // cos(beta) < 0
+    out[0] = Math.atan2(a[1], -a[5]);
+    out[1]  = -Math.asin(a[9]);
+    out[1]  += (out[1] >= 0) ? -Math.PI : Math.PI; // beta [-pi,-pi/2) U (pi/2,pi)
+    out[2] = Math.atan2(a[8], -a[10]); // gamma (-pi/2, pi/2)
+  }
+  else { // matrix.m33 == 0
+    if (a[8] > 0) {  // cos(gamma) == 0, cos(beta) > 0
+      out[0] = Math.atan2(-a[1], a[5]);
+      out[1]  = Math.asin(a[9]); // beta [-pi/2, pi/2]
+      out[2] = - (Math.PI / 2); // gamma = -pi/2
+    }
+    else if (a[8] < 0) { // cos(gamma) == 0, cos(beta) < 0
+      out[0] = Math.atan2(a[1], -a[5]);
+      out[1]  = -Math.asin(a[9]);
+      out[1]  += (out[1] >= 0) ? - Math.PI : Math.PI; // beta [-pi,-pi/2) U (pi/2,pi)
+      out[2] = - (Math.PI / 2); // gamma = -pi/2
+    }
+    else { // matrix.m31 == 0, cos(beta) == 0
+      // Gimbal lock discontinuity
+      out[0] = Math.atan2(a[4], a[0]);
+      out[1]  = (a[9] > 0) ? (Math.PI / 2) : - (Math.PI / 2); // beta = +-pi/2
+      out[3] = 0; // gamma = 0
+    }
   }
 
-  static fromEuler(other) {
-    let euler = new Euler();
-    euler.alpha = other.alpha;
-    euler.beta  = other.beta;
-    euler.gamma = other.gamma;
+  // alpha is in [-pi, pi], make sure it is in [0, 2*pi).
+  if (out[0] < 0) {
+    out[0] += 2 * Math.PI; // alpha [0, 2*pi)
   }
 
-  static fromRotationMatrix(matrix) {
-    let alpha, beta, gamma;
+  out[0] *= radToDeg;
+  out[1] *= radToDeg;
+  out[2] *= radToDeg;
 
-    if (matrix.m33 > 0) { // cos(beta) > 0
-      alpha = Math.atan2(-matrix.m12, matrix.m22);
-      beta  = Math.asin(matrix.m32); // beta (-pi/2, pi/2)
-      gamma = Math.atan2(-matrix.m31, matrix.m33); // gamma (-pi/2, pi/2)
-    }
-    else if (matrix.m33 < 0) {  // cos(beta) < 0
-      alpha = Math.atan2(matrix.m12, -matrix.m22);
-      beta  = -Math.asin(matrix.m32);
-      beta  += (beta >= 0) ? -Math.PI : Math.PI; // beta [-pi,-pi/2) U (pi/2,pi)
-      gamma = Math.atan2(matrix.m31, -matrix.m33); // gamma (-pi/2, pi/2)
-    }
-    else { // matrix.m33 == 0
-      if (matrix.m31 > 0) {  // cos(gamma) == 0, cos(beta) > 0
-        alpha = Math.atan2(-matrix.m12, matrix.m22);
-        beta  = Math.asin(matrix.m32); // beta [-pi/2, pi/2]
-        gamma = - (Math.PI / 2); // gamma = -pi/2
-      }
-      else if (matrix.m31 < 0) { // cos(gamma) == 0, cos(beta) < 0
-        alpha = Math.atan2(matrix.m12, -matrix.m22);
-        beta  = -Math.asin(matrix.m32);
-        beta  += (beta >= 0) ? - Math.PI : Math.PI; // beta [-pi,-pi/2) U (pi/2,pi)
-        gamma = - (Math.PI / 2); // gamma = -pi/2
-      }
-      else { // matrix.m31 == 0, cos(beta) == 0
-        // Gimbal lock discontinuity
-        alpha = Math.atan2(matrix.m21, matrix.m11);
-        beta  = (matrix.m32 > 0) ? (Math.PI / 2) : - (Math.PI / 2); // beta = +-pi/2
-        gamma = 0; // gamma = 0
-      }
-    }
-
-    // alpha is in [-pi, pi], make sure it is in [0, 2*pi).
-    if (alpha < 0) {
-      alpha += 2 * Math.PI; // alpha [0, 2*pi)
-    }
-
-    return new Euler(alpha * radToDeg, beta * radToDeg, gamma * radToDeg);
-  }
-
-  static fromQuaternion(q) {
-    let _alpha, _beta, _gamma;
-
-    var sqw = q.w * q.w;
-    var sqx = q.x * q.x;
-    var sqy = q.y * q.y;
-    var sqz = q.z * q.z;
-
-    var unitLength = sqw + sqx + sqy + sqz; // Normalised == 1, otherwise correction divisor.
-    var wxyz = q.w * q.x + q.y * q.z;
-    var epsilon = 1e-6; // rounding factor
-
-    if (wxyz > (0.5 - epsilon) * unitLength) {
-      _alpha = 2 * Math.atan2(q.y, q.w);
-      _beta = Math.PI / 2;
-      _gamma = 0;
-    } else if (wxyz < (-0.5 + epsilon) * unitLength) {
-      _alpha = -2 * Math.atan2(q.y, q.w);
-      _beta = -Math.PI / 2;
-      _gamma = 0;
-    } else {
-      var aX = sqw - sqx + sqy - sqz;
-      var aY = 2 * (q.w * q.z - q.x * q.y);
-
-      var gX = sqw - sqx - sqy + sqz;
-      var gY = 2 * (q.w * q.y - q.x * q.z);
-
-      if (gX > 0) {
-        _alpha = Math.atan2(aY, aX);
-        _beta  = Math.asin(2 * wxyz / unitLength);
-        _gamma = Math.atan2(gY, gX);
-      } else {
-        _alpha = Math.atan2(-aY, -aX);
-        _beta  = -Math.asin(2 * wxyz / unitLength);
-        _beta  += _beta < 0 ? Math.PI : - Math.PI;
-        _gamma = Math.atan2(-gY, -gX);
-      }
-    }
-
-    // alpha is in [-pi, pi], make sure it is in [0, 2*pi).
-    if (_alpha < 0) {
-      _alpha += 2 * Math.PI; // alpha [0, 2*pi)
-    }
-
-    // Convert to degrees
-    _alpha *= radToDeg;
-    _beta  *= radToDeg;
-    _gamma *= radToDeg;
-
-   // apply derived euler angles to current object
-    return new Euler(_alpha, _beta, _gamma);
-  }
-
-  rotateAxisAngle(x, y, z, angle) {
-    let matrix = RotationMatrix.fromEuler(this);
-    matrix.rotateAxisAngleSelf(x, y, z, angle);
-
-    return Euler.fromRotationMatrix(matrix);
-  }
-
-  rotateAxisAngleSelf(x, y, z, angle) {
-    let other = this.rotateAxisAngle(x, y, z, angle);
-    this.alpha = other.alpha;
-    this.beta = other.beta;
-    this.gamma = other.gamma;
-
-    return this;
-  }
+  return out;
 };
 
 
@@ -1448,11 +1098,10 @@ class Euler {
     _createViewport() {
       // Create rotation matrix object (calculated per canvas draw)
       this.rotationMatrix = mat4.create();
-      mat4.identity(this.rotationMatrix);
+      this.rotationMatrix = mat4.identity(mat4.create());
 
       // Create screen transform matrix (calculated once)
-      this.screenMatrix = mat4.create();
-      mat4.identity(this.screenMatrix);
+      this.screenMatrix = mat4.identity(mat4.create());
 
       var inv = toRad(180);
 
@@ -1462,8 +1111,7 @@ class Euler {
       this.screenMatrix[5] =   Math.cos(inv);
 
       // Create world transformation matrix (calculated once)
-      this.worldMatrix = mat4.create();
-      mat4.identity(this.worldMatrix);
+      this.worldMatrix = mat4.identity(mat4.create());
 
       var up = toRad(90);
 
@@ -1485,8 +1133,8 @@ class Euler {
           this.gl.viewport(0, 0, this.gl.viewportWidth, this.gl.viewportHeight);
 
           // Recalculate perspective
-          mat4.identity(this.mCompassRenderer.pMatrix);
-          mat4.perspective(45, this.gl.viewportWidth / this.gl.viewportHeight, 1, 100, this.mCompassRenderer.pMatrix);
+          this.mCompassRenderer.pMatrix = mat4.identity(mat4.create());
+          mat4.perspective(this.mCompassRenderer.pMatrix, 45, this.gl.viewportWidth / this.gl.viewportHeight, 1, 100);
           this.gl.uniformMatrix4fv(
             this.gl.getUniformLocation(this.mCompassRenderer.shaderProgram, "uPMatrix"),
             false, this.mCompassRenderer.pMatrix
@@ -1508,26 +1156,26 @@ class Euler {
     }
 
     calculateRotationMatrix() {
-      var orientationMatrix = RotationMatrix.fromEuler(new Euler(this.alpha, this.beta, this.gamma));
+      this.rotationMatrix = mat4.identity(mat4.create());
 
-      let screenOrientationAngle = (window.screen.orientation.angle || 0) * degToRad;
-      orientationMatrix.rotateAxisAngleSelf(0, 0, 1, -screenOrientationAngle);
+      // Apply screen orientation.
+      mat4.rotateZ(this.rotationMatrix, this.rotationMatrix, (window.screen.orientation.angle || 0) * degToRad);
 
-      // Copy 3x3 RotationMatrix values to 4x4 gl-matrix mat4
-      this.rotationMatrix = orientationMatrix.toFloat32Array();
+      // Apply compass orientation.
+      const compassOrientation = euler.toMat4(mat4.create(), [this.alpha, this.beta, this.gamma]);
+      mat4.multiply(this.rotationMatrix, this.rotationMatrix, compassOrientation);
 
-      // Invert compass heading
-      mat4.multiply(this.rotationMatrix, this.screenMatrix);
+      const q = mat4.getRotation(quat.create(), this.rotationMatrix);
+      const axis = quat.getAxisAngle(vec3.fromValues(0, 0, 1), q) * radToDeg;
 
-      // Apply world orientation (heads-up display)
-      mat4.multiply(this.rotationMatrix, this.worldMatrix);
+      // Invert compass heading.
+      mat4.multiply(this.rotationMatrix, this.rotationMatrix, this.screenMatrix);
+
+      // Apply world orientation (heads-up display).
+      mat4.multiply(this.rotationMatrix, this.rotationMatrix, this.worldMatrix);
 
       this.mCompassRenderer.setRotationMatrix(this.rotationMatrix);
-
-      var euler = Euler.fromRotationMatrix(orientationMatrix);
-      let value = 360 - euler.alpha;
-      value = Math.floor(value < 360 ? value : value % 360);
-      this.mCompassRenderer.setCompassHeading(value);
+      this.mCompassRenderer.setCompassHeading(Math.floor(axis));
     }
 
     render() {
@@ -1613,8 +1261,8 @@ class Euler {
       this.shaderProgram.shaderUniform = this.gl.getUniformLocation(this.shaderProgram, "uSampler");
 
       // Calculate perspective
-      mat4.identity(this.pMatrix);
-      mat4.perspective(45, this.gl.viewportWidth / this.gl.viewportHeight, 1, 100, this.pMatrix);
+      this.pMatrix = mat4.identity(mat4.create());
+      mat4.perspective(this.pMatrix, 45, this.gl.viewportWidth / this.gl.viewportHeight, 1, 100);
       this.gl.uniformMatrix4fv(this.gl.getUniformLocation(this.shaderProgram, "uPMatrix"), false, this.pMatrix);
     }
 
@@ -1639,11 +1287,11 @@ class Euler {
       this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
 
       // Reset move matrix
-      mat4.identity(this.mvMatrix);
-      mat4.translate(this.mvMatrix, [ 0, 0, -4 ]);
+      this.mvMatrix = mat4.identity(mat4.create());
+      mat4.translate(this.mvMatrix, this.mvMatrix, [ 0, 0, -4 ]);
 
       // Apply calculated device rotation matrix
-      mat4.multiply(this.mvMatrix, this.rotationMatrix);
+      mat4.multiply(this.mvMatrix, this.mvMatrix, this.rotationMatrix);
 
       this.setMatrixUniforms();
 
