@@ -1,4 +1,4 @@
-let version = 4;
+let version = 5;
 
 self.addEventListener('install', function(event) {
 });

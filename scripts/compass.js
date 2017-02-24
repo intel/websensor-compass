@@ -706,13 +706,13 @@ euler.fromMat4 = function(out, a) {
     out[1]  = Math.asin(a[9]); // beta (-pi/2, pi/2)
     out[2] = Math.atan2(-a[8], a[10]); // gamma (-pi/2, pi/2)
   }
-  else if (a.m33 < 0) {  // cos(beta) < 0
+  else if (a[10] < 0) {  // cos(beta) < 0
     out[0] = Math.atan2(a[1], -a[5]);
     out[1]  = -Math.asin(a[9]);
     out[1]  += (out[1] >= 0) ? -Math.PI : Math.PI; // beta [-pi,-pi/2) U (pi/2,pi)
     out[2] = Math.atan2(a[8], -a[10]); // gamma (-pi/2, pi/2)
   }
-  else { // matrix.m33 == 0
+  else { // a[10] (m33) == 0
     if (a[8] > 0) {  // cos(gamma) == 0, cos(beta) > 0
       out[0] = Math.atan2(-a[1], a[5]);
       out[1]  = Math.asin(a[9]); // beta [-pi/2, pi/2]
@@ -724,7 +724,7 @@ euler.fromMat4 = function(out, a) {
       out[1]  += (out[1] >= 0) ? - Math.PI : Math.PI; // beta [-pi,-pi/2) U (pi/2,pi)
       out[2] = - (Math.PI / 2); // gamma = -pi/2
     }
-    else { // matrix.m31 == 0, cos(beta) == 0
+    else { // a[8] (m31) == 0, cos(beta) == 0
       // Gimbal lock discontinuity
       out[0] = Math.atan2(a[4], a[0]);
       out[1]  = (a[9] > 0) ? (Math.PI / 2) : - (Math.PI / 2); // beta = +-pi/2
@@ -933,12 +933,14 @@ euler.fromMat4 = function(out, a) {
           this.startGyroscopeDemo(1);
           break;
         case "c":
-        default:
           let num = parseFloat(filter);
           if (Number.isNaN(num))
             num = 0.98;
           let weight = Math.min(1, Math.max(0, num));
           this.startGyroscopeDemo(weight);
+          break;
+        default:
+          this.startMagnetometerDemo();
       }
     }
 
