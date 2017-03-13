@@ -8,6 +8,10 @@ libraries:
 
 handlers:
 
+- url: /explainer.html
+  static_files: explainer.html
+  upload: explainer.html
+
 - url: /sw.js
   static_files: sw.js
   upload: sw.js

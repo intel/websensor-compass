@@ -1,4 +1,4 @@
-let version = 5;
+let version = 18;
 
 self.addEventListener('install', function(event) {
 });
@@ -10,6 +10,11 @@ self.addEventListener("activate", function(event) {
 });
 
 self.addEventListener('fetch', function(event) {
+  if (event.request.url.includes('localhost')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   if (event.request.url.includes('manifest.json')) {
     event.respondWith(fetch(event.request));
     return;

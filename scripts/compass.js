@@ -26,6 +26,88 @@
   * URLs:      http://www.pierrox.net/cmsms/applications/marine-compass.html
   */
 
+
+class ZephyrController {
+  constructor() {
+    const state = {
+      timestamp: 0,
+      sequence: -1
+    };
+
+    state.accelerometerData = [0, 0, 0];
+    state.gyroscopeData =[0, 0, 0];
+
+
+    this.accelerometer = new class Accelerometer {
+      get timestamp() { return state.timestamp; }
+      get x() { return state.accelerometerData[0]; }
+      get y() { return state.accelerometerData[1]; }
+      get z() { return state.accelerometerData[2]; }
+      constructor() { this.onchange = null; }
+    }
+
+    this.gyroscope = new class Gyroscope {
+      get timestamp() { return state.timestamp; }
+      get x() { return state.gyroscopeData[0]; }
+      get y() { return state.gyroscopeData[1]; }
+      get z() { return state.gyroscopeData[2]; }
+      constructor() { this.onchange = null; }
+    }
+
+    const connect = async () => {
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [
+              { name: 'Zephyr' },
+              { name: 'Arduino101' },
+              { name: 'Geoff101' },
+              { name: 'Geoff' },
+              { name: 'Intel Curie' }
+            ],
+            optionalServices: [0xFC00]
+        });
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(0xFC00);
+        const characteristic = await service.getCharacteristic(0xFC0A);
+
+        characteristic.addEventListener('characteristicvaluechanged', oncharacteristicvaluechanged);
+        characteristic.startNotifications();
+      } catch(err) {
+        console.log(err);
+      }
+    }
+
+    const oncharacteristicvaluechanged = (event) => {
+      const data = event.target.value;
+
+      state.timestamp = performance.now();
+
+      const multi = 2 ** (32 - 14); // 14 bit precision.
+
+      const isAccel = data.getUint8(0);
+      const values = [
+        (data.getUint32(1) << 1) / multi,
+        (data.getUint32(5) << 1) / multi,
+        (data.getUint32(9) << 1) / multi
+      ];
+
+      //if (!isAccel) console.log(values);
+
+      if (isAccel) {
+        state.accelerometerData = values;
+      } else {
+        state.gyroscopeData = values;
+      }
+
+      if (this.accelerometer.onchange) this.accelerometer.onchange();
+      if (this.gyroscope.onchange) this.gyroscope.onchange();
+    }
+
+    Object.assign(this, { connect });
+  }
+}
+
 /**
  * DayDreamController:
  * @author mrdoob / http://mrdoob.com/ and Kenneth Christiansen
@@ -829,7 +911,7 @@ euler.fromMat4 = function(out, a) {
 
       this.sensors = {};
 
-      this.daydream = null;
+      this.external = null;
 
       try {
         this.gl = create3DContext(this.canvasEl);
@@ -850,10 +932,17 @@ euler.fromMat4 = function(out, a) {
     }
 
     set useDaydream(value) {
-      this.daydream = (value) ? new DaydreamController() : null;
+      this.external = (value) ? new DaydreamController() : null;
       this.onRouteChanged();
 
-      if (this.daydream) this.daydream.connect();
+      if (this.external) this.external.connect();
+    }
+
+    set useZephyr(value) {
+      this.external = (value) ? new ZephyrController() : null;
+      this.onRouteChanged();
+
+      if (this.external) this.external.connect();
     }
 
     setTitle(value) {
@@ -876,7 +965,7 @@ euler.fromMat4 = function(out, a) {
 
       try {
         this.sensors.Accelerometer = null;
-        this.sensors.Accelerometer = (this.daydream) ? this.daydream.accelerometer : new Accelerometer({ frequency: 50, includeGravity: true });
+        this.sensors.Accelerometer = (this.external) ? this.external.accelerometer : new Accelerometer({ frequency: 50, includeGravity: true });
         this.sensors.Accelerometer.onerror = err => {
           this.sensors.Accelerometer = null;
           console.log(`Accelerometer ${err.error}`)
@@ -885,7 +974,7 @@ euler.fromMat4 = function(out, a) {
 
       try {
         this.sensors.Gyroscope = null;
-        this.sensors.Gyroscope = (this.daydream) ? this.daydream.gyroscope : new Gyroscope({ frequency: 50 });
+        this.sensors.Gyroscope = (this.external) ? this.external.gyroscope : new Gyroscope({ frequency: 50 });
         this.sensors.Gyroscope.onerror = err => {
           this.sensors.Gyroscope = null;
           console.log(`Gyroscope ${err.error}`)
@@ -985,14 +1074,21 @@ euler.fromMat4 = function(out, a) {
       }
 
       this.sensors.Accelerometer.onchange = event => {
-        let xAccel = this.sensors.Accelerometer.y / 9.81;
-        let yAccel = this.sensors.Accelerometer.x / 9.81;
-        let zAccel = this.sensors.Accelerometer.z / 9.81;
+        let xAccel = this.sensors.Accelerometer.y;
+        let yAccel = this.sensors.Accelerometer.x;
+        let zAccel = this.sensors.Accelerometer.z;
 
-        let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
-        this.beta = (xAccel / norm) * 180 / 2;
-        this.gamma = (yAccel / norm) * -180 / 2;
-        this.alpha = (zAccel / norm);
+        // Treat the acceleration vector as an orientation vector by normalizing it.
+        // Keep in mind that the if the device is flipped, the vector will just be
+        // pointing in the other direction, so we have no way to know from the
+        // accelerometer data what way the device is oriented.
+        let norm = Math.sqrt(xAccel ** 2 + yAccel ** 2 + zAccel ** 2);
+
+        // As we only can cover half of the spectrum we multiply the unit vector
+        // with 90 so that it coveres the -90 to 90 degrees (180 degrees in total).
+        this.beta = (xAccel / norm) * 90;
+        this.gamma = (yAccel / norm) * - 90;
+        this.alpha = 0;
       };
 
       return true;
@@ -1037,15 +1133,24 @@ euler.fromMat4 = function(out, a) {
         let zAccel = 0;
 
         if (weight != 1) {
-          xAccel = this.sensors.Accelerometer.y / 9.81;
-          yAccel = this.sensors.Accelerometer.x / 9.81;
-          zAccel = this.sensors.Accelerometer.z / 9.81;
+          xAccel = this.sensors.Accelerometer.y;
+          yAccel = this.sensors.Accelerometer.x;
+          zAccel = this.sensors.Accelerometer.z;
 
-          let norm = Math.sqrt(Math.pow(xAccel, 2) + Math.pow(yAccel, 2) + Math.pow(zAccel, 2));
+          // Treat the acceleration vector as an orientation vector by normalizing it.
+          // Keep in mind that the if the device is flipped, the vector will just be
+          // pointing in the other direction, so we have no way to know from the
+          // accelerometer data what way the device is oriented.
+          let norm = Math.sqrt(xAccel ** 2 + yAccel** 2 + zAccel ** 2);
+
+          // As we only can cover half of the spectrum we multiply the unit vector
+         // with 90 so that it coveres the -90 to 90 degrees (180 degrees in total).
           xAccel = (xAccel / norm) * 90;
-          yAccel = (yAccel / norm) * -90;
-          zAccel = (zAccel / norm);
+          yAccel = (yAccel / norm) * - 90;
+          zAccel = 0;
         }
+
+        //console.log(this.sensors.Gyroscope);
 
         let xGyro = this.sensors.Gyroscope.x * 180 / Math.PI;
         let yGyro = this.sensors.Gyroscope.y * 180 / Math.PI;
@@ -1067,7 +1172,7 @@ euler.fromMat4 = function(out, a) {
         // Complementary filter
         else {
           // E.g.: Current angle = 98% * (current angle + gyro rotation rate) + (2% * Accelerometer angle)
-          this.alpha = weight * (this.alpha + zGyro * dt) + (1.0 - weight) * zAccel;
+          this.alpha = (this.alpha + zGyro * dt);
           this.beta = weight * (this.beta + xGyro * dt) + (1.0 - weight) * xAccel;
           this.gamma = weight * (this.gamma + yGyro * dt) + (1.0 - weight) * yAccel;
         }
