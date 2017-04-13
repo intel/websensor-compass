@@ -1040,7 +1040,7 @@ euler.fromMat4 = function(out, a) {
         }
       }
       for (let sensor of requiredSensors) {
-        if (this.sensors[sensor].state == "unconnected") {
+        if (this.sensors[sensor].activated == false) {
           this.sensors[sensor].start();
         }
       }
