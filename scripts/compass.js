@@ -1680,6 +1680,8 @@ euler.fromMat4 = function(out, a) {
           this.gl.bindTexture(this.gl.TEXTURE_2D, this.mTextures[entry]);
           this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, image);
 
+          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
           // see: http://stackoverflow.com/a/19748905
           if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
             // the dimensions are power of 2 so generate mips and turn on
@@ -1689,8 +1691,6 @@ euler.fromMat4 = function(out, a) {
           } else {
             // at least one of the dimensions is not a power of 2 so set the filtering
             // so WebGL will render it.
-            this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-            this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
             this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
           }
 
