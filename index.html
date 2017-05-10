@@ -396,9 +396,6 @@
     }
   });
 
-  let useDaydream = false;
-  let useZephyr = false;
-
   function changeRoute(route) {
     window.history.replaceState({}, '', `?filter=${route}`);
     document.querySelector('sensor-compass').onRouteChanged();
@@ -406,14 +403,17 @@
   }
 
   function daydream() {
-    useDaydream = !useDaydream;
-    document.querySelector('sensor-compass').useDaydream = useDaydream;
+    document.querySelector('sensor-compass').backend = 'daydream';
     document.querySelector('menu-drawer').opened = false;
   }
 
   function zephyr() {
-    useZephyr = !useZephyr;
-    document.querySelector('sensor-compass').useZephyr = useZephyr;
+    document.querySelector('sensor-compass').backend = 'zephyr';
+    document.querySelector('menu-drawer').opened = false;
+  }
+
+  function browser() {
+    document.querySelector('sensor-compass').backend = 'browser';
     document.querySelector('menu-drawer').opened = false;
   }
 </script>
@@ -428,8 +428,11 @@
       <button onclick="changeRoute('m')">Magnetometer (magnet + accel)</button>
       <button onclick="changeRoute('c')">Complementary filter (accel + gyro)</button>
       <button onclick="changeRoute('k')">Kalman filter (accel + gyro)</button>
+      <button onclick="changeRoute('o')">Absolute Orientation (accel + gyro + mag)</button>
+      <br>
       <button onclick="daydream()">Use Daydream Controller</button>
       <button onclick="zephyr()">Use Zephyr Device</button>
+      <button onclick="browser()">Use device itself</button>
     </div>
   </menu-drawer>
   <error-console></error-console>

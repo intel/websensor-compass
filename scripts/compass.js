@@ -931,15 +931,18 @@ euler.fromMat4 = function(out, a) {
       }
     }
 
-    set useDaydream(value) {
-      this.external = (value) ? new DaydreamController() : null;
-      this.onRouteChanged();
+    set backend(value) {
+      this.external = null;
 
-      if (this.external) this.external.connect();
-    }
+      switch(value) {
+        case 'zephyr':
+          this.external = new ZephyrController();
+          break;
+        case 'daydream':
+          this.external = new DaydreamController();
+          break;
+      }
 
-    set useZephyr(value) {
-      this.external = (value) ? new ZephyrController() : null;
       this.onRouteChanged();
 
       if (this.external) this.external.connect();
@@ -999,11 +1002,23 @@ euler.fromMat4 = function(out, a) {
         };
       } catch(err) { }
 
+      try {
+        this.sensors.AbsoluteOrientationSensor = null;
+        this.sensors.AbsoluteOrientationSensor = new AbsoluteOrientationSensor({ frequency: 50 });
+        this.sensors.AbsoluteOrientationSensor.onerror = err => {
+          this.sensors.AbsoluteOrientationSensor = null;
+          console.log(`AbsoluteOrientationSensor ${err.error}`)
+        };
+      } catch(err) { }
+
       this.alpha = 0.0;
       this.beta = 0.0;
       this.gamma = 0.0;
 
       switch (filter) {
+        case "o":
+          this.startAbsoluteOrientationDemo();
+          break;
         case "l":
           this.startAmbientLightDemo();
           break;
@@ -1062,6 +1077,27 @@ euler.fromMat4 = function(out, a) {
         let value = Math.min(Math.max(remap(this.sensors.AmbientLightSensor.illuminance, 0, 100, 0, 100), 0), 100);
         this.canvasEl.style = `filter: grayscale(${value}%)`;
       }
+
+      return true;
+    }
+
+    startAbsoluteOrientationDemo() {
+      this.setTitle("AbsoluteOrientation");
+      if (!this._startSensors("AbsoluteOrientationSensor")) {
+        console.error('AbsoluteOrientationSensor demo requires an accelerometer, magnetometer and gyroscope sensors');
+        return false;
+      }
+
+      this.sensors.AbsoluteOrientationSensor.onchange = event => {
+        let orientation = mat4.create();
+        this.sensors.AbsoluteOrientationSensor.populateMatrix(orientation);
+
+        const angles = euler.fromMat4(euler.create(), orientation);
+
+        this.alpha = angles[0];
+        this.beta = angles[1];
+        this.gamma = angles[2];
+      };
 
       return true;
     }
