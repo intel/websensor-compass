@@ -55,6 +55,10 @@
     vertical-align: middle;
     white-space: nowrap;
   }
+  error-console {
+    position: absolute;
+    z-index: 0;
+  }
 </style>
 
 <script type="text/javascript" src="scripts/gl-matrix.min.js"></script>
@@ -168,6 +172,50 @@
 
 <template id="error-console">
   <style>
+    :host {
+      pointer-events: none;
+      touch-action: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    :host::before {
+      content: '';
+      display: block;
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.4);
+      opacity: 0;
+      will-change: opacity;
+      transition: opacity 0.3s cubic-bezier(0,0,0.3,1);
+    }
+    .container {
+      pointer-events: all;
+      position: absolute;
+      bottom: 0px;
+      width: 100%;
+      max-height: 400px;
+      background: #FFF;
+      height: 90%;
+      box-shadow: 2px 0 12px rgba(0,0,0,0.4);
+      transform: translateY(+102%);
+      display: flex;
+      flex-direction: column;
+      will-change: transform;
+    }
+    .animation {
+      transition: transform 0.33s cubic-bezier(0,0,0.3,1);
+    }
+    .expanded {
+      transform: none;
+    }
+
     .messages {
       flex: 1 1;
       overflow-y: scroll;
@@ -208,9 +256,39 @@
     .log {
       background-color: white;
     }
+
+    button {
+      pointer-events: all;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 0px;
+      margin: 6px 8px 6px 8px;
+      color: #039be5;
+      background-color: transparent;
+      border: 0;
+      border-radius: 2px;
+      box-shadow: none;
+      cursor: pointer;
+      display: none;
+      height: 48px;
+      width: 48px;
+      outline: 0;
+      transition: background-color .2s, box-shadow .2s;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
   </style>
-  <div class="messages">
+  <button id="error-button">
+    <svg fill="#FFFFFF" height="48" viewBox="0 0 24 24" width="48" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0 0h24v24H0z" fill="none"/>
+        <path d="M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5c-.49 0-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z"/>
+    </svg>
+  </button>
+  <div class="container">
+    <div class="messages"></div>
   </div>
+
 </template>
 
 <script>
@@ -229,7 +307,12 @@
         let el = document.createElement('div');
         el.setAttribute('class', 'consoleLine error');
         el.appendChild(document.createTextNode(message + "."));
-        this.shadowRoot.appendChild(el);
+
+        let menuBtn = this.shadowRoot.querySelector('#error-button');
+        menuBtn.style.display = "block";
+
+        let messagesEl = this.shadowRoot.querySelector('.messages');
+        messagesEl.appendChild(el);
 
         error.call(console, message, ...rest);
       }
@@ -239,10 +322,46 @@
         let el = document.createElement('div');
         el.setAttribute('class', 'consoleLine log');
         el.appendChild(document.createTextNode(message + "."));
-        this.shadowRoot.appendChild(el);
+
+        let menuBtn = this.shadowRoot.querySelector('#error-button');
+        menuBtn.style.display = "block";
+
+        let messagesEl = this.shadowRoot.querySelector('.messages');
+        messagesEl.appendChild(el);
 
         log.call(console, message, ...rest);
       }
+
+      this._opened = false;
+    }
+
+    connectedCallback() {
+      this.containerEl = this.shadowRoot.querySelector('.container');
+      this.menuBtn = this.shadowRoot.querySelector('#error-button');
+
+      this.containerEl.addEventListener('click', _ => this.opened = !this.opened);
+      this.menuBtn.addEventListener('click', _ => this.opened = true);
+    }
+
+    get opened() {
+      return this._opened;
+    }
+
+    set opened(value) {
+      this.containerEl.addEventListener('transitionend', this.onTransitionEnd);
+      this.containerEl.classList.add('animation');
+
+      this._opened = value;
+      if (value) {
+        this.containerEl.classList.add('expanded');
+      } else {
+        this.containerEl.classList.remove('expanded');
+      }
+    }
+
+    onTransitionEnd (evt) {
+      this.containerEl.classList.remove('animation');
+      this.containerEl.removeEventListener('transitionend', this.onTransitionEnd);
     }
   });
 
@@ -301,7 +420,7 @@
       }
     }
 
-    onTransitionEnd (evt) {
+    onTransitionEnd(evt) {
       this.containerEl.classList.remove('animation');
       this.containerEl.removeEventListener('transitionend', this.onTransitionEnd);
     }
@@ -435,7 +554,7 @@
       <button onclick="browser()">Use device itself</button>
     </div>
   </menu-drawer>
-  <error-console></error-console>
+  <error-console style="z-index: 1"></error-console>
   <sensor-compass></sensor-compass>
 </body>
 
