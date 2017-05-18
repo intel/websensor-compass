@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Marine Compass</title>
+
+<meta charset="utf-8">
+<meta name="viewport" content="user-scalable=no, initial-scale=1">
+
+<style>
+  html {
+    width: 100%;
+    height: 100%;
+  }
+  body {
+    position: fixed;
+    margin: 0px;
+    padding: 0px;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent url(./images/bg.jpg) no-repeat scroll 50%;
+    background-size: cover;
+    background-origin: border-box;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  .output_err {
+    display: block;
+    background-color: #fff;
+    color: #CC0000;
+    font-weight: bold;
+    border: 1px solid #000;
+    margin: 20px 10px;
+    padding: 20px;
+  }
+  button {
+    padding: 8px;
+    margin: 6px 8px 6px 8px;
+    font: 500 16px Roboto, sans-serif;
+    color: #039be5;
+    background-color: transparent;
+    border: 0;
+    border-radius: 2px;
+    box-shadow: none;
+    cursor: pointer;
+    display: inline-block;
+    height: 36px;
+    min-width: 36px;
+    outline: 0;
+    overflow: hidden;
+    text-align: center;
+    text-decoration: none;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    transition: background-color .2s,box-shadow .2s;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  error-console {
+    position: absolute;
+    z-index: 0;
+  }
+</style>
+
+<script type="text/javascript" src="scripts/gl-matrix.min.js"></script>
+<script type="text/javascript" src="scripts/compass.js"></script>
+
+<script src="scripts/custom-elements.min.js" defer></script>
+
+<link rel="manifest" href="/manifest.json">
+<link rel="serviceworker" href="/sw.js">
+
+<template id="sensor-compass">
+  <style>
+  .heading {
+    display: block;
+    text-align: center;
+    padding: 10px 0 0;
+    height: 40px;
+    color: #fff;
+    font-size: 1.8em;
+    font-weight: normal;
+  }
+  #glCanvas {
+    position: absolute;
+    pointer-events: none;
+    top: 0;
+  }
+  </style>
+  <div class="heading">
+    <span id="headingReading">-</span>&deg;
+  </div>
+  <div class="heading" id="title"></div>
+  <canvas id="glCanvas" width="320" height="240"></canvas>
+</template>
+
+<template id="menu-drawer">
+  <style>
+    :host {
+      touch-action: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    :host::before {
+      content: '';
+      display: block;
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.4);
+      opacity: 0;
+      will-change: opacity;
+      transition: opacity 0.3s cubic-bezier(0,0,0.3,1);
+    }
+    .container {
+      position: relative;
+      width: 90%;
+      max-width: 400px;
+      background: #FFF;
+      height: 100%;
+      box-shadow: 2px 0 12px rgba(0,0,0,0.4);
+      transform: translateX(-102%);
+      display: flex;
+      flex-direction: column;
+      will-change: transform;
+    }
+    .animation {
+      transition: transform 0.33s cubic-bezier(0,0,0.3,1);
+    }
+    .expanded {
+      transform: none;
+    }
+    .content {
+      margin: 10px;
+    }
+    button {
+      position: fixed;
+      padding: 8px;
+      margin: 6px 8px 6px 8px;
+      color: #039be5;
+      background-color: transparent;
+      border: 0;
+      border-radius: 2px;
+      box-shadow: none;
+      cursor: pointer;
+      display: inline-block;
+      height: 40px;
+      width: 40px;
+      outline: 0;
+      transition: background-color .2s, box-shadow .2s;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+  </style>
+  <button id="menu-button">
+      <svg fill="#000000" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0 0h24v24H0z" fill="none"/>
+        <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+      </svg>
+  </button>
+  <div class="container">
+    <div class="content">
+      <slot></slot>
+    </div>
+  </div>
+</template>
+
+<template id="error-console">
+  <style>
+    :host {
+      pointer-events: none;
+      touch-action: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    :host::before {
+      content: '';
+      display: block;
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.4);
+      opacity: 0;
+      will-change: opacity;
+      transition: opacity 0.3s cubic-bezier(0,0,0.3,1);
+    }
+    .container {
+      pointer-events: all;
+      position: absolute;
+      bottom: 0px;
+      width: 100%;
+      max-height: 400px;
+      background: #FFF;
+      height: 90%;
+      box-shadow: 2px 0 12px rgba(0,0,0,0.4);
+      transform: translateY(+102%);
+      display: flex;
+      flex-direction: column;
+      will-change: transform;
+    }
+    .animation {
+      transition: transform 0.33s cubic-bezier(0,0,0.3,1);
+    }
+    .expanded {
+      transform: none;
+    }
+
+    .messages {
+      flex: 1 1;
+      overflow-y: scroll;
+      word-wrap: break-word;
+      user-select: text;
+      transform: translateZ(0);
+    }
+    .consoleLine {
+      padding: 1px 22px 1px 24px;
+      border-top: 1px solid rgb(230, 230, 230);
+      min-height: 20px;
+      line-height: 20px;
+      flex: auto;
+      font-family: monospace;
+      font-size: 8pt;
+    }
+    .consoleLine:first-of-type {
+      border-top: none !important;
+    }
+    .consoleLine .consoleColor {
+      width: 20px;
+      height: 20px;
+    }
+    .error:last-child {
+      border-bottom: 1px solid #ffd7d7;
+    }
+    .log:last-child {
+      border-bottom: 1px solid rgb(230, 230, 230);
+    }
+    .error + :not(.error) {
+      border-top: 1px solid #ffd7d7;
+    }
+    .error {
+      background-color: #fff0f0;
+      border-top: 1px solid #ffd7d7 !important;
+      color: red !important;
+    }
+    .log {
+      background-color: white;
+    }
+
+    button {
+      pointer-events: all;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 0px;
+      margin: 6px 8px 6px 8px;
+      color: #039be5;
+      background-color: transparent;
+      border: 0;
+      border-radius: 2px;
+      box-shadow: none;
+      cursor: pointer;
+      display: none;
+      height: 48px;
+      width: 48px;
+      outline: 0;
+      transition: background-color .2s, box-shadow .2s;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+  </style>
+  <button id="error-button">
+    <svg fill="#FFFFFF" height="48" viewBox="0 0 24 24" width="48" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0 0h24v24H0z" fill="none"/>
+        <path d="M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5c-.49 0-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z"/>
+    </svg>
+  </button>
+  <div class="container">
+    <div class="messages"></div>
+  </div>
+
+</template>
+
+<script>
+  customElements.define('error-console', class extends HTMLElement {
+    constructor() {
+      super();
+
+      const template = document.querySelector('#error-console');
+      const clone = document.importNode(template.content, true);
+
+      const shadowRoot = this.attachShadow({ mode: 'open' });
+      shadowRoot.appendChild(clone);
+
+      let error = console.error;
+      console.error = (message, ...rest) => {
+        let el = document.createElement('div');
+        el.setAttribute('class', 'consoleLine error');
+        el.appendChild(document.createTextNode(message + "."));
+
+        let menuBtn = this.shadowRoot.querySelector('#error-button');
+        menuBtn.style.display = "block";
+
+        let messagesEl = this.shadowRoot.querySelector('.messages');
+        messagesEl.appendChild(el);
+
+        error.call(console, message, ...rest);
+      }
+
+      let log = console.log;
+      console.log = (message, ...rest) => {
+        let el = document.createElement('div');
+        el.setAttribute('class', 'consoleLine log');
+        el.appendChild(document.createTextNode(message + "."));
+
+        let menuBtn = this.shadowRoot.querySelector('#error-button');
+        menuBtn.style.display = "block";
+
+        let messagesEl = this.shadowRoot.querySelector('.messages');
+        messagesEl.appendChild(el);
+
+        log.call(console, message, ...rest);
+      }
+
+      this._opened = false;
+    }
+
+    connectedCallback() {
+      this.containerEl = this.shadowRoot.querySelector('.container');
+      this.menuBtn = this.shadowRoot.querySelector('#error-button');
+
+      this.containerEl.addEventListener('click', _ => this.opened = !this.opened);
+      this.menuBtn.addEventListener('click', _ => this.opened = true);
+    }
+
+    get opened() {
+      return this._opened;
+    }
+
+    set opened(value) {
+      this.containerEl.addEventListener('transitionend', this.onTransitionEnd);
+      this.containerEl.classList.add('animation');
+
+      this._opened = value;
+      if (value) {
+        this.containerEl.classList.add('expanded');
+      } else {
+        this.containerEl.classList.remove('expanded');
+      }
+    }
+
+    onTransitionEnd (evt) {
+      this.containerEl.classList.remove('animation');
+      this.containerEl.removeEventListener('transitionend', this.onTransitionEnd);
+    }
+  });
+
+
+  // Should:
+  // - allow being swiped in from the left
+  // - on touch end, if majority of menu is visible, animate the rest in, else animate out
+  // - allow being swiped out from the right, if open (from the point on it touches)
+  // - click outside, closes menu
+  // - inertia should close and open depending on direction (so-called fling)
+  customElements.define('menu-drawer', class extends HTMLElement {
+    constructor() {
+      super();
+
+      const template = document.querySelector('#menu-drawer');
+      const clone = document.importNode(template.content, true);
+
+      const shadowRoot = this.attachShadow({ mode: 'open' });
+      shadowRoot.appendChild(clone);
+
+      this.onGestureStart = this.onGestureStart.bind(this);
+      this.onGestureMove = this.onGestureMove.bind(this);
+      this.onTouchEnd = this.onTouchEnd.bind(this);
+      this.onTransitionEnd = this.onTransitionEnd.bind(this);
+      this.update = this.update.bind(this);
+
+      this._startX = 0;
+      this._currentX = 0;
+      this._touching = false;
+      this._opened = false;
+    }
+
+    connectedCallback() {
+      this.containerEl = this.shadowRoot.querySelector('.container');
+      this.menuBtn = this.shadowRoot.querySelector('#menu-button');
+
+      this.menuBtn.addEventListener('click', _ => this.opened = true);
+      this.addEventListener('pointerdown', this.onGestureStart, { passive: true });
+      this.addEventListener('pointermove', this.onGestureMove, { passive: true });
+      this.addEventListener('pointerup', this.onTouchEnd);
+    }
+
+    get opened() {
+      return this._opened;
+    }
+
+    set opened(value) {
+      this.containerEl.addEventListener('transitionend', this.onTransitionEnd);
+      this.containerEl.classList.add('animation');
+
+      this._opened = value;
+      if (value) {
+        this.containerEl.classList.add('expanded');
+      } else {
+        this.containerEl.classList.remove('expanded');
+      }
+    }
+
+    onTransitionEnd(evt) {
+      this.containerEl.classList.remove('animation');
+      this.containerEl.removeEventListener('transitionend', this.onTransitionEnd);
+    }
+
+    isWithinHitRegion(x, y) {
+      return x < 20 || this.shadowRoot.elementsFromPoint(x, y).includes(this.containerEl);
+    }
+
+    addVelocitySample(dDist, dTime) {
+      if (dTime === 0) return;
+
+      const velocitySample = dDist / dTime;
+
+      // Low pass filter.
+      const alpha = 0.75;
+      this._velocity *= alpha;
+      this._velocity += (1 - alpha) * velocitySample;
+    }
+
+    onGestureStart(evt) {
+      if (!this.isWithinHitRegion(evt.pageX, evt.pageY)) {
+        return;
+      }
+
+      if (window.PointerEvent) {
+        evt.target.setPointerCapture(evt.pointerId);
+      }
+
+      this._touching = true;
+
+      this._left = this.containerEl.getBoundingClientRect().left;
+
+      this._startX = evt.pageX;
+      this._currentX = this._startX;
+      this._timestamp = new Date().getTime();
+      this._velocity = 0;
+
+      requestAnimationFrame(this.update);
+    }
+
+    onGestureMove(evt) {
+      if (!this._touching) {
+        return;
+      }
+
+      const lastTimestamp = this._timestamp;
+      this._timestamp = new Date().getTime();
+      const dTime = this._timestamp - lastTimestamp;
+
+      const lastX = this._currentX;
+      this._currentX = evt.pageX;
+
+      const dX = this._currentX - lastX;
+
+      this.addVelocitySample(dX, dTime);
+    }
+
+    onTouchEnd(evt) {
+      if (!this._touching) {
+        this.opened = false;
+        return;
+      }
+
+      this._touching = false;
+
+      let endOpenedState;
+
+      // Check for fling.
+      if (Math.abs(this._velocity) > 1) {
+        endOpenedState = this._velocity > 0;
+      }
+      // Check depending on percentage visible.
+      else {
+        let left = this.containerEl.getBoundingClientRect().left;
+        let width = this.containerEl.clientWidth;
+        let percentageVisible = (left + width) / width
+        endOpenedState = percentageVisible >= 0.5;
+      }
+
+      this.containerEl.style.transform = '';
+      this.opened = endOpenedState;
+    }
+
+    update() {
+      if (!this._touching)
+        return;
+
+      requestAnimationFrame(this.update);
+
+      const translateX = Math.min(0, this._currentX - this._startX + this._left);
+      this.containerEl.style.transform = `translateX(${translateX}px)`;
+    }
+  });
+
+  function changeRoute(route) {
+    window.history.replaceState({}, '', `?filter=${route}`);
+    document.querySelector('sensor-compass').onRouteChanged();
+    document.querySelector('menu-drawer').opened = false;
+  }
+
+  function daydream() {
+    document.querySelector('sensor-compass').backend = 'daydream';
+    document.querySelector('menu-drawer').opened = false;
+  }
+
+  function zephyr() {
+    document.querySelector('sensor-compass').backend = 'zephyr';
+    document.querySelector('menu-drawer').opened = false;
+  }
+
+  function browser() {
+    document.querySelector('sensor-compass').backend = 'browser';
+    document.querySelector('menu-drawer').opened = false;
+  }
+</script>
+</head>
+
+<body>
+  <menu-drawer style="z-index: 1">
+    <div style="display: flex; flex-direction: column">
+      <button onclick="changeRoute('l')">Ambient Light</button>
+      <button onclick="changeRoute('a')">Accelerometer</button>
+      <button onclick="changeRoute('g')">Gyroscope</button>
+      <button onclick="changeRoute('m')">Magnetometer (magnet + accel)</button>
+      <button onclick="changeRoute('c')">Complementary filter (accel + gyro)</button>
+      <button onclick="changeRoute('k')">Kalman filter (accel + gyro)</button>
+      <button onclick="changeRoute('o')">Absolute Orientation (accel + gyro + mag)</button>
+      <br>
+      <button onclick="daydream()">Use Daydream Controller</button>
+      <button onclick="zephyr()">Use Zephyr Device</button>
+      <button onclick="browser()">Use device itself</button>
+    </div>
+  </menu-drawer>
+  <error-console style="z-index: 1"></error-console>
+  <sensor-compass></sensor-compass>
+</body>
+
+</html>

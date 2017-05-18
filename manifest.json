@@ -1,0 +1,17 @@
+{
+  "lang": "en",
+  "dir": "ltr",
+  "name": "Marine Compass",
+  "description": "A compass to demonstrate the Generic Sensor APIs such as gyroscope, accelerometer, ambient light sensor and magnetometer. Supports fusion of sensors as well, like complementary and Kalman filters",
+  "short_name": "Compass",
+  "icons": [{
+    "src": "icon192.png",
+    "sizes": "192x192",
+    "type": "image/png"
+  }],
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#7c8898",
+  "background_color": "#a1adbd"
+}
