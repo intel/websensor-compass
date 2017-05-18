@@ -26,7 +26,6 @@
   * URLs:      http://www.pierrox.net/cmsms/applications/marine-compass.html
   */
 
-
 class ZephyrController {
   constructor() {
     const state = {
@@ -908,7 +907,8 @@ euler.fromMat4 = function(out, a) {
       this.alpha = 0.0;
       this.beta = 0.0;
       this.gamma = 0.0;
-
+      this.methodUsed = null;	//Variable to track which method of determining orientation we are using
+      this.orientationMat = mat4.create();	//orientation matrix that will be populated by the sensor when using AbsoluteOrientationSensor, not used in other cases yet
       this.sensors = {};
 
       this.external = null;
@@ -1064,6 +1064,7 @@ euler.fromMat4 = function(out, a) {
 
     startAmbientLightDemo() {
       this.setTitle("Ambient Light");
+      this.methodUsed = "AmbientLight";
       if (!this._startSensors("AmbientLightSensor")) {
         console.error('Ambient light demo requires an ambient light sensor');
         return false;
@@ -1083,20 +1084,13 @@ euler.fromMat4 = function(out, a) {
 
     startAbsoluteOrientationDemo() {
       this.setTitle("AbsoluteOrientation");
+      this.methodUsed = "AbsoluteOrientation";
       if (!this._startSensors("AbsoluteOrientationSensor")) {
         console.error('AbsoluteOrientationSensor demo requires an accelerometer, magnetometer and gyroscope sensors');
         return false;
       }
-
       this.sensors.AbsoluteOrientationSensor.onchange = event => {
-        let orientation = mat4.create();
-        this.sensors.AbsoluteOrientationSensor.populateMatrix(orientation);
-
-        const angles = euler.fromMat4(euler.create(), orientation);
-
-        this.alpha = angles[0];
-        this.beta = angles[1];
-        this.gamma = angles[2];
+        this.sensors.AbsoluteOrientationSensor.populateMatrix(this.orientationMat);
       };
 
       return true;
@@ -1104,6 +1098,7 @@ euler.fromMat4 = function(out, a) {
 
     startAccelerometerDemo() {
       this.setTitle("Accelerometer");
+      this.methodUsed = "Accelerometer";
       if (!this._startSensors("Accelerometer")) {
         console.error('Accelerometer demo requires an accelerometer sensor');
         return false;
@@ -1137,6 +1132,7 @@ euler.fromMat4 = function(out, a) {
     startGyroscopeDemo(weight = 1) {
       if (weight == 1) {
         this.setTitle("Gyroscope");
+        this.methodUsed = "Gyroscope";
         if (!this._startSensors("Gyroscope")) {
           console.error('The Gyroscope demo requires a gyroscope sensor');
           return false;
@@ -1145,6 +1141,7 @@ euler.fromMat4 = function(out, a) {
 
       else if (weight <= 0) {
         this.setTitle("Kalman filter");
+        this.methodUsed = "KalmanFilter";
         if (!this._startSensors("Gyroscope", "Accelerometer")) {
           console.error('The Kalman filter demo requires both gyroscope and accelerometer sensors');
           return false;
@@ -1153,6 +1150,7 @@ euler.fromMat4 = function(out, a) {
 
       else if (weight > 0 && weight < 1) {
         this.setTitle(`Complementary (${weight}) filter`);
+        this.methodUsed = "ComplementaryFilter";
         if (!this._startSensors("Gyroscope", "Accelerometer")) {
           console.error('The complementary filter demo requires both gyroscope and accelerometer sensors');
           return false;
@@ -1219,6 +1217,7 @@ euler.fromMat4 = function(out, a) {
 
     startMagnetometerDemo() {
       this.setTitle("Magnetometer");
+      this.methodUsed = "Magnetometer";
       if (!this._startSensors("Magnetometer", "Accelerometer")) {
         console.error('Magnetometer demo requires magnetometer and accelerometer sensors');
         return false;
@@ -1300,12 +1299,23 @@ euler.fromMat4 = function(out, a) {
 
     calculateRotationMatrix() {
       this.rotationMatrix = mat4.identity(mat4.create());
+      let compassOrientation = null;
 
       // Apply screen orientation.
       mat4.rotateZ(this.rotationMatrix, this.rotationMatrix, (window.screen.orientation.angle || 0) * degToRad);
 
       // Apply compass orientation.
-      const compassOrientation = euler.toMat4(mat4.create(), [this.alpha, this.beta, this.gamma]);
+      /*
+       * When using method AbsoluteOrientation, use rotation matrix directly. Otherwise use angles.
+      */
+      switch(this.methodUsed) {
+        case "AbsoluteOrientation":	//In this case, use the new backend
+          compassOrientation = this.orientationMat;
+          break;
+        default:
+          compassOrientation = euler.toMat4(mat4.create(), [this.alpha, this.beta, this.gamma]);
+          break;
+      }
       mat4.multiply(this.rotationMatrix, this.rotationMatrix, compassOrientation);
 
       const q = mat4.getRotation(quat.create(), this.rotationMatrix);
