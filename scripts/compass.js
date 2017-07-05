@@ -42,7 +42,7 @@ class ZephyrController {
       get x() { return state.accelerometerData[0]; }
       get y() { return state.accelerometerData[1]; }
       get z() { return state.accelerometerData[2]; }
-      constructor() { this.onchange = null; }
+      constructor() { this.onreading = null; }
     }
 
     this.gyroscope = new class Gyroscope {
@@ -50,7 +50,7 @@ class ZephyrController {
       get x() { return state.gyroscopeData[0]; }
       get y() { return state.gyroscopeData[1]; }
       get z() { return state.gyroscopeData[2]; }
-      constructor() { this.onchange = null; }
+      constructor() { this.onreading = null; }
     }
 
     const connect = async () => {
@@ -99,8 +99,8 @@ class ZephyrController {
         state.gyroscopeData = values;
       }
 
-      if (this.accelerometer.onchange) this.accelerometer.onchange();
-      if (this.gyroscope.onchange) this.gyroscope.onchange();
+      if (this.accelerometer.onreading) this.accelerometer.onreading();
+      if (this.gyroscope.onreading) this.gyroscope.onreading();
     }
 
     Object.assign(this, { connect });
@@ -124,7 +124,7 @@ class DaydreamController {
       get x() { return state.orientationData[0]; }
       get y() { return state.orientationData[1]; }
       get z() { return state.orientationData[2]; }
-      constructor() { this.onchange = null; }
+      constructor() { this.onreading = null; }
     }
 
     this.accelerometer = new class Accelerometer {
@@ -132,7 +132,7 @@ class DaydreamController {
       get x() { return state.accelerometerData[0]; }
       get y() { return state.accelerometerData[1]; }
       get z() { return state.accelerometerData[2]; }
-      constructor() { this.onchange = null; }
+      constructor() { this.onreading = null; }
     }
 
     this.gyroscope = new class Gyroscope {
@@ -140,7 +140,7 @@ class DaydreamController {
       get x() { return state.gyroscopeData[0]; }
       get y() { return state.gyroscopeData[1]; }
       get z() { return state.gyroscopeData[2]; }
-      constructor() { this.onchange = null; }
+      constructor() { this.onreading = null; }
     }
 
     const connect = async () => {
@@ -211,9 +211,9 @@ class DaydreamController {
       state.xTouch = ((data.getUint8(16) & 0x1F) << 3 | (data.getUint8(17) & 0xE0) >> 5) / 255.0;
       state.yTouch = ((data.getUint8(17) & 0x1F) << 3 | (data.getUint8(18) & 0xE0) >> 5) / 255.0;
 
-      if (this.orientation.onchange) this.orientation.onchange();
-      if (this.accelerometer.onchange) this.accelerometer.onchange();
-      if (this.gyroscope.onchange) this.gyroscope.onchange();
+      if (this.orientation.onreading) this.orientation.onreading();
+      if (this.accelerometer.onreading) this.accelerometer.onreading();
+      if (this.gyroscope.onreading) this.gyroscope.onreading();
     }
 
     Object.assign(this, { connect });
@@ -273,7 +273,7 @@ class GeolocationSensor {
 
       this.timestamp = pos.timestamp;
 
-      if (this.onchange) this.onchange();
+      if (this.onreading) this.onreading();
     })
 
   }
@@ -289,7 +289,7 @@ class CompassSensor {
   constructor() {
     const geolocation = new GeolocationSensor({ enableHighAccuracy: true });
     let geofield = null;
-    geolocation.onchange = function() {
+    geolocation.onreading = function() {
       let millis = (new Date()).getTime();
       geofield = new GeomagneticField(this.latitude, this.longitude, this.altitude, millis);
     };
@@ -329,7 +329,7 @@ class CompassSensor {
       this.beta = angles[1];
       this.gamma = angles[2];
 
-      if (this.onchange) this.onchange();
+      if (this.onreading) this.onreading();
     }
 
     Object.assign(this, { update });
@@ -958,7 +958,7 @@ euler.fromMat4 = function(out, a) {
 
       for (let sensor of Object.values(this.sensors)) {
         if (!sensor) { continue; }
-        sensor.onchange = null;
+        sensor.onreading = null;
 
         // Not working properly:
         // if (sensor.state == "activating" || sensor.state == "active") {
@@ -1074,7 +1074,7 @@ euler.fromMat4 = function(out, a) {
         return outRangeStart + (outRangeEnd - outRangeStart) * ((value - inRangeStart) / (inRangeEnd - inRangeStart));
       };
 
-      this.sensors.AmbientLightSensor.onchange = event => {
+      this.sensors.AmbientLightSensor.onreading = event => {
         let value = Math.min(Math.max(remap(this.sensors.AmbientLightSensor.illuminance, 0, 100, 0, 100), 0), 100);
         this.canvasEl.style = `filter: grayscale(${value}%)`;
       }
@@ -1089,7 +1089,7 @@ euler.fromMat4 = function(out, a) {
         console.error('AbsoluteOrientationSensor demo requires an accelerometer, magnetometer and gyroscope sensors');
         return false;
       }
-      this.sensors.AbsoluteOrientationSensor.onchange = event => {
+      this.sensors.AbsoluteOrientationSensor.onreading = event => {
         this.sensors.AbsoluteOrientationSensor.populateMatrix(this.orientationMat);
       };
 
@@ -1104,7 +1104,7 @@ euler.fromMat4 = function(out, a) {
         return false;
       }
 
-      this.sensors.Accelerometer.onchange = event => {
+      this.sensors.Accelerometer.onreading = event => {
         let xAccel = this.sensors.Accelerometer.y;
         let yAccel = this.sensors.Accelerometer.x;
         let zAccel = this.sensors.Accelerometer.z;
@@ -1161,7 +1161,7 @@ euler.fromMat4 = function(out, a) {
         throw new Error;
       }
 
-      this.sensors.Gyroscope.onchange = event => {
+      this.sensors.Gyroscope.onreading = event => {
         let xAccel = 0;
         let yAccel = 0;
         let zAccel = 0;
@@ -1227,7 +1227,7 @@ euler.fromMat4 = function(out, a) {
       const gravity = new LowPassFilterData(this.sensors.Accelerometer, 0.8);
       const compass = new CompassSensor();
 
-      this.sensors.Magnetometer.onchange = event => {
+      this.sensors.Magnetometer.onreading = event => {
         gravity.update(this.sensors.Accelerometer);
         compass.update(gravity, this.sensors.Magnetometer);
 
